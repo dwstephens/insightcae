@@ -25,6 +25,7 @@
 #include <QTreeView>
 #include <QFileSystemModel>
 #include <QTabWidget>
+#include <QProgressBar>
 
 #include "qoccviewercontext.h"
 #include "qoccviewwidget.h"
@@ -44,6 +45,7 @@
 
 
 class ISCADModel;
+class ISCADModelEditor;
 
 
 class ISCADMainWindow
@@ -58,6 +60,7 @@ protected:
     QTreeView* fileTree_;
     QFileSystemModel* fileModel_;
     
+    int lastTabIndex_;
     QTabWidget* modelTabs_;
 
     QAction
@@ -78,11 +81,18 @@ protected:
         *act_background_color_,
         *act_display_all_shaded_,
         *act_display_all_wire_,
-        *act_reset_shading_;
+        *act_reset_shading_,
+        *act_measure_distance_,
+        *act_sel_pts_,
+        *act_sel_edgs_,
+        *act_sel_faces_
+    ;
 
     QMenu* clipplanemenu_;
+    QProgressBar* progressbar_;
+    QPushButton* bgparsestopbtn_;
 
-    void connectMenuToModel(ISCADModel* model);
+    void connectMenuToModel(ISCADModelEditor* model, ISCADModelEditor* lme=NULL);
         
 protected slots:
     void onFileClicked(const QModelIndex &index);
@@ -93,21 +103,23 @@ public slots:
     void loadModel();
     
     void activateModel(int tabindex);
-    void onUpdateTabTitle(ISCADModel* model, const boost::filesystem::path& filepath, bool isUnSaved);
+    void onUpdateTabTitle(ISCADModelEditor* model, const boost::filesystem::path& filepath, bool isUnSaved);
     void onCloseModel(int tabindex);
-    void onUpdateClipPlaneMenu();
+    void onUpdateClipPlaneMenu(int errorState=0);
+    void onNewModel();
     void onLoadModelFile(const boost::filesystem::path& modelfile);
     
-    void displayStatusMessage(const QString& message);
     void onShowFileTreeContextMenu(const QPoint&);
+
+    void updateProgress(int step, int totalSteps);
 
 public:
     ISCADMainWindow(QWidget* parent = 0, Qt::WindowFlags flags = 0, bool nolog=false);
     ~ISCADMainWindow();
 
-    ISCADModel* insertEmptyModel();
-    ISCADModel* insertModel(const boost::filesystem::path& file);
-    ISCADModel* insertModelScript(const std::string& contents);
+    ISCADModelEditor* insertEmptyModel(bool bgparsing=true);
+    ISCADModelEditor* insertModel(const boost::filesystem::path& file, bool bgparsing=true);
+    ISCADModelEditor* insertModelScript(const std::string& contents, bool bgparsing=true);
     virtual void closeEvent(QCloseEvent *event);
    
 signals:

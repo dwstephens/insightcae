@@ -20,6 +20,7 @@
 #include "extrusion.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
 
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
@@ -38,6 +39,15 @@ defineType(Extrusion);
 addToFactoryTable(Feature, Extrusion);
 
 
+size_t Extrusion::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*sk_;
+  h+=L_->value();
+  h+=centered_;
+  return h.getHash();
+}
 
 
 Extrusion::Extrusion(): Feature()
@@ -49,11 +59,6 @@ Extrusion::Extrusion(): Feature()
 Extrusion::Extrusion(FeaturePtr sk, VectorPtr L, bool centered)
 : sk_(sk), L_(L), centered_(centered)
 {
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=*sk_;
-  h+=L_->value();
-  h+=centered_;
 }
 
 
@@ -69,6 +74,8 @@ FeaturePtr Extrusion::create(FeaturePtr sk, VectorPtr L, bool centered)
 
 void Extrusion::build()
 {
+    ExecTimer t("Extrusion::build() ["+featureSymbolName()+"]");
+
     if ( !centered_ ) {
         BRepPrimAPI_MakePrism mkp ( sk_->shape(), to_Vec ( L_->value() ) );
         providedSubshapes_["frontFace"]=FeaturePtr ( new Feature ( mkp.FirstShape() ) );

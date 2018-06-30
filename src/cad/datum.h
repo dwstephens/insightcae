@@ -39,11 +39,12 @@ class Datum
 {
 public:
   typedef std::map<std::string, DatumPtr> Map;
-  size_t hash_;
   
 protected:
   bool providesPointReference_, providesAxisReference_, providesPlanarReference_;
   
+  virtual size_t calcHash() const =0;
+
 public:
   Datum(bool point, bool axis, bool planar);
   Datum(std::istream&);
@@ -62,11 +63,11 @@ public:
   virtual gp_Ax3 plane() const;
   operator const gp_Ax3 () const;
 
-  virtual AIS_InteractiveObject* createAISRepr(const gp_Trsf& tr = gp_Trsf()) const;
+  virtual Handle_AIS_InteractiveObject createAISRepr(AIS_InteractiveContext& context, const std::string& label, const gp_Trsf& tr = gp_Trsf()) const;
 
   virtual void write(std::ostream& file) const;
   
-  inline size_t hash() const { return hash_; }
+  virtual void checkForBuildDuringAccess() const;
 };
 
 
@@ -79,18 +80,20 @@ protected:
     DatumPtr base_;
     gp_Trsf tr_;
     VectorPtr translation_;
+
+    virtual size_t calcHash() const;
+    virtual void build();
     
 public:
     TransformedDatum(DatumPtr datum, gp_Trsf tr);
     TransformedDatum(DatumPtr datum, VectorPtr translation);
     
-    virtual void build();
     
     virtual gp_Pnt point() const;
     virtual gp_Ax1 axis() const;
     virtual gp_Ax3 plane() const;
     
-    virtual AIS_InteractiveObject* createAISRepr(const gp_Trsf& tr = gp_Trsf()) const;
+    virtual Handle_AIS_InteractiveObject createAISRepr(AIS_InteractiveContext& context, const std::string& label, const gp_Trsf& tr = gp_Trsf()) const;
 };
 
 
@@ -107,7 +110,7 @@ public:
   
   virtual gp_Pnt point() const;
 
-  virtual AIS_InteractiveObject* createAISRepr(const gp_Trsf& tr = gp_Trsf()) const;
+  virtual Handle_AIS_InteractiveObject createAISRepr(AIS_InteractiveContext& context, const std::string& label, const gp_Trsf& tr = gp_Trsf()) const;
 };
 
 
@@ -125,7 +128,7 @@ public:
   virtual gp_Pnt point() const;
   virtual gp_Ax1 axis() const;
 
-  virtual AIS_InteractiveObject* createAISRepr(const gp_Trsf& tr = gp_Trsf()) const;
+  virtual Handle_AIS_InteractiveObject createAISRepr(AIS_InteractiveContext& context, const std::string& label, const gp_Trsf& tr = gp_Trsf()) const;
 };
 
 
@@ -142,7 +145,7 @@ public:
   virtual gp_Pnt point() const;
   virtual gp_Ax3 plane() const;
 
-  virtual AIS_InteractiveObject* createAISRepr(const gp_Trsf& tr = gp_Trsf()) const;
+  virtual Handle_AIS_InteractiveObject createAISRepr(AIS_InteractiveContext& context, const std::string& label, const gp_Trsf& tr = gp_Trsf()) const;
 };
 
 #endif
@@ -155,10 +158,12 @@ protected:
   FeaturePtr feat_;
   std::string name_;
   DatumPtr dat_;
+
+  virtual size_t calcHash() const;
+  virtual void build();
   
 public:
   ProvidedDatum(FeaturePtr feat, std::string name);
-  virtual void build();
   
   virtual inline bool providesPointReference() const { checkForBuildDuringAccess(); return providesPointReference_; }
   virtual inline bool providesAxisReference() const { checkForBuildDuringAccess(); return providesAxisReference_; }
@@ -168,8 +173,10 @@ public:
   virtual gp_Ax1 axis() const;
   virtual gp_Ax3 plane() const;
 
-  virtual AIS_InteractiveObject* createAISRepr(const gp_Trsf& tr = gp_Trsf()) const;
+  virtual Handle_AIS_InteractiveObject createAISRepr(AIS_InteractiveContext& context, const std::string& label, const gp_Trsf& tr = gp_Trsf()) const;
 };
+
+
 
 
 class ExplicitDatumPoint
@@ -177,10 +184,12 @@ class ExplicitDatumPoint
 {
   VectorPtr coord_;
   
+  virtual size_t calcHash() const;
+  virtual void build();
+
 public:
   ExplicitDatumPoint(VectorPtr c);
   
-  virtual void build();
 };
 
 
@@ -188,11 +197,13 @@ class ExplicitDatumAxis
 : public DatumAxis
 {
   VectorPtr p0_, ex_;
+
+  virtual size_t calcHash() const;
+  virtual void build();
   
 public:
   ExplicitDatumAxis(VectorPtr p0, VectorPtr ex);
   
-  virtual void build();
 };
 
 
@@ -202,6 +213,9 @@ class DatumPlane
   VectorPtr p0_, n_, up_;
   VectorPtr p1_, p2_;
   
+  virtual size_t calcHash() const;
+  virtual void build();
+
 public:
   DatumPlane
   (
@@ -233,10 +247,12 @@ public:
   DatumPlane(std::istream&);
   
   
-  virtual void build();
 
   virtual void write(std::ostream& file) const;
 };
+
+
+
 
 /**
  * Plane/Plane intersection
@@ -247,20 +263,30 @@ class XsecPlanePlane
 {
   ConstDatumPtr pl1_, pl2_;
   
+  virtual size_t calcHash() const;
+  virtual void build();
+
 public:
   XsecPlanePlane(ConstDatumPtr pl1, ConstDatumPtr pl2);
-  virtual void build();
 };
+
+
+
 
 class XsecAxisPlane
 : public DatumPoint
 {
   ConstDatumPtr ax_, pl_;
   
+  virtual size_t calcHash() const;
+  virtual void build();
+
 public:
   XsecAxisPlane(ConstDatumPtr ax, ConstDatumPtr pl);
-  virtual void build();
+
 };
+
+
 
 }
 }

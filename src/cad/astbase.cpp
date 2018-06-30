@@ -25,30 +25,83 @@ namespace insight
 {
 namespace cad
 {
+
+std::mutex ASTBase::cancel_mtx_;
+std::set<std::thread::id> ASTBase::cancel_requests_;
+
+void ASTBase::cancelRebuild(std::thread::id thread_id)
+{
+  std::lock_guard<std::mutex> l(cancel_mtx_);
+  cancel_requests_.insert(thread_id);
+}
+
   
 ASTBase::ASTBase()
 : valid_(false),
-  building_(false)
+  building_(false),
+  hash_(0)
 {}
+
+ASTBase::ASTBase(const ASTBase& o)
+: valid_(o.valid_),
+  building_(false),
+  hash_(o.hash_)
+{
+}
 
 
 ASTBase::~ASTBase()
 {}
 
+void ASTBase::setValid()
+{
+  valid_=true;
+}
+
+bool ASTBase::valid() const
+{
+  return valid_;
+}
+
+bool ASTBase::building() const
+{
+  return building_;
+}
 
 void ASTBase::checkForBuildDuringAccess() const
 {
+  {
+    std::lock_guard<std::mutex> l(cancel_mtx_);
+    auto i = cancel_requests_.find(std::this_thread::get_id());
+    if ( i != cancel_requests_.end())
+      {
+        cancel_requests_.erase(i);
+        throw RebuildCancelException();
+      }
+  }
+
   boost::mutex m_mutex;
   boost::unique_lock<boost::mutex> lock(m_mutex);
   
   if (!valid()) 
   {
-    building_=true;
-    const_cast<ASTBase*>(this)->build();
-    building_=false;
-    const_cast<ASTBase*>(this)->setValid();
+      building_=true;
+      const_cast<ASTBase*>(this)->build();
+      building_=false;
+      const_cast<ASTBase*>(this)->setValid();
   }
 }
+
+
+size_t ASTBase::hash() const
+{
+  if (hash_==0)
+    {
+      hash_=calcHash();
+    }
+  return hash_;
+}
+
 
 }
 }

@@ -50,7 +50,22 @@ void Filter::firstPass(FeatureID feature)
 {
 }
 
-
+size_t FeatureSet::calcHash() const
+{
+  size_t h=0;
+  boost::hash_combine(h, *model_);
+  if (base_set_) boost::hash_combine(h, *base_set_);
+  boost::hash_combine(h, int(shape_));
+  boost::hash_combine(h, filterexpr_);
+  BOOST_FOREACH(const FeatureSetParserArg& arg, refs_)
+  {
+      if (const FeatureSetPtr *fp = boost::get<FeatureSetPtr>(&arg))
+      {
+          boost::hash_combine(h, **fp);
+      }
+  }
+  return h;
+}
 
 FeatureSet::FeatureSet(const FeatureSet& o)
 : ASTBase(o),
@@ -76,6 +91,15 @@ FeatureSet::FeatureSet(ConstFeaturePtr m, EntityType shape, FeatureID id)
 {
     add(id);
 }
+
+FeatureSet::FeatureSet(ConstFeaturePtr m, EntityType shape, const std::vector<FeatureID>& ids)
+: model_(m),
+  shape_(shape),
+  data_(ids.begin(), ids.end())
+{
+  setValid();
+}
+
 
 FeatureSet::FeatureSet
 (
@@ -279,22 +303,6 @@ void FeatureSet::write() const
   std::cout<<" ]"<<std::endl;
 }
 
-size_t FeatureSet::hash() const
-{
-    size_t h=0;
-    boost::hash_combine(h, *model_);
-    if (base_set_) boost::hash_combine(h, *base_set_);
-    boost::hash_combine(h, int(shape_));
-    boost::hash_combine(h, filterexpr_);
-    BOOST_FOREACH(const FeatureSetParserArg& arg, refs_)
-    {
-        if (const FeatureSetPtr *fp = boost::get<FeatureSetPtr>(&arg))
-        {
-            boost::hash_combine(h, **fp);
-        }
-    }
-    return h;
-}
 
 std::ostream& operator<<(std::ostream& os, const FeatureSetData& fsd)
 {

@@ -37,7 +37,9 @@ enum trimmedMesher {sHM, cfM};
 
 ExternalGeometryFile::ExternalGeometryFile(const ParameterSet& ps)
 : p_(ps)
-{}
+{
+//  std::cout<<"added \""<<p_.fileName<<"\""<<std::endl;
+}
 
 std::string ExternalGeometryFile::fileName() const
 {
@@ -94,6 +96,7 @@ Geometry::Geometry( const ParameterSet& ps )
 : ExternalGeometryFile(ps),
   p_(ps)
 {
+  std::cout<<"added \""<<p_.fileName<<"\" as "<<p_.name<<std::endl;
 }
 
 void Geometry::addIntoDictionary(OFDictData::dict& sHMDict) const
@@ -409,8 +412,8 @@ void setStdSnapCtrls(OFDictData::dict& snapCtrls)
   snapCtrls["nRelaxIter"]=5;  
 
   snapCtrls["nFeatureSnapIter"]=10;  
-  snapCtrls["implicitFeatureSnap"]=false;  
-  snapCtrls["explicitFeatureSnap"]=true;  
+  snapCtrls["implicitFeatureSnap"]=true;
+  snapCtrls["explicitFeatureSnap"]=false;
   snapCtrls["multiRegionFeatureSnap"]=false;  
 
 }
@@ -658,6 +661,10 @@ void snappyHexMesh
 
   //  populate with defaults
   setStdSnapCtrls(snapCtrls);
+
+  snapCtrls["implicitFeatureSnap"]=p.doImplicitFeatureSnap;
+  snapCtrls["explicitFeatureSnap"]=p.doExplicitFeatureSnap;
+
   setStdCastellatedCtrls(castellatedCtrls);
   if (p.PiM.size()>1)
   {

@@ -441,7 +441,7 @@ double f_nonlinearMinimizeND(const gsl_vector * p, void * params)
 //   }
 // };
     
-arma::mat nonlinearMinimizeND(const ObjectiveND& model, const arma::mat& x0, double tol)
+arma::mat nonlinearMinimizeND(const ObjectiveND& model, const arma::mat& x0, double tol, const arma::mat& steps)
 {
 //   int n=model.numP();
 //   column_vector starting_point(n);
@@ -525,6 +525,12 @@ arma::mat nonlinearMinimizeND(const ObjectiveND& model, const arma::mat& x0, dou
         ss = gsl_vector_alloc (model.numP());
         gsl_vector_set_all (ss, 0.1);
 
+        if (steps.n_elem!=0)
+          {
+            for (int i=0; i<model.numP(); i++)
+              gsl_vector_set(ss, i, steps(i));
+          }
+
         /* Initialize method and iterate */
         nonlinearMinimizeNDData param(model);
         minex_func.n = model.numP();
@@ -555,7 +561,7 @@ arma::mat nonlinearMinimizeND(const ObjectiveND& model, const arma::mat& x0, dou
 // 	      );
 // 	    }
         }
-        while (status == GSL_CONTINUE && iter < 1000);
+        while (status == GSL_CONTINUE && iter < 10000);
         
         arma::mat res=arma::zeros(model.numP());
         for (int i=0; i<model.numP(); i++)
@@ -663,8 +669,8 @@ void Interpolator::initialize(const arma::mat& xy_us, bool force_linear)
             gsl_spline_init (&spline[i], xy.colptr(0), xy.colptr(i+1), nrows);
         }
 
-        first=xy.row(0);
-        last=xy.row(xy.n_rows-1);
+        first_=xy.row(0);
+        last_=xy.row(xy.n_rows-1);
     }
     catch (...)
     {
@@ -720,69 +726,73 @@ double Interpolator::integrate(double a, double b, int col) const
   return gsl_spline_eval_integ( &(spline[col]), a, b, &(*acc) );
 }
 
-double Interpolator::y(double x, int col) const
+double Interpolator::y(double x, int col, OutOfBounds* outOfBounds) const
 {
   if (col>=spline.size())
     throw insight::Exception(str(format("requested value interpolation in data column %d while there are only %d columns!")
 			    % col % spline.size()));
     
-  if (x<first(0)) return first(col+1);
-  if (x>last(0)) return last(col+1);
+  if (x<first_(0)) { if (outOfBounds) *outOfBounds=IP_OUTBOUND_SMALL; return first_(col+1); }
+  if (x>last_(0)) { if (outOfBounds) *outOfBounds=IP_OUTBOUND_LARGE; return last_(col+1); }
+  if (outOfBounds) *outOfBounds=IP_INBOUND;
+
   double v=gsl_spline_eval (&(spline[col]), x, &(*acc));
   return v;
 }
 
-double Interpolator::dydx(double x, int col) const
+double Interpolator::dydx(double x, int col, OutOfBounds* outOfBounds) const
 {
   if (col>=spline.size())
     throw insight::Exception(str(format("requested derivative interpolation in data column %d while there are only %d columns!")
 			    % col % spline.size()));
     
-  if (x<first(0)) return dydx(first(0), col);
-  if (x>last(0)) return dydx(last(0), col);
+  if (x<first_(0)) { if (outOfBounds) *outOfBounds=IP_OUTBOUND_SMALL; return dydx(first_(0), col); }
+  if (x>last_(0)) { if (outOfBounds) *outOfBounds=IP_OUTBOUND_LARGE; return dydx(last_(0), col); }
+  if (outOfBounds) *outOfBounds=IP_INBOUND;
+
   double v=gsl_spline_eval_deriv (&(spline[col]), x, &(*acc));
   return v;
 }
 
-arma::mat Interpolator::operator()(double x) const
+arma::mat Interpolator::operator()(double x, OutOfBounds* outOfBounds) const
 {
   arma::mat result=zeros(1, spline.size());
   for (int i=0; i<spline.size(); i++)
-    result(0,i)=y(x, i);
+    result(0,i)=y(x, i, outOfBounds);
   return result;
 }
 
-arma::mat Interpolator::dydxs(double x) const
+arma::mat Interpolator::dydxs(double x, OutOfBounds* outOfBounds) const
 {
   arma::mat result=zeros(1, spline.size());
   for (int i=0; i<spline.size(); i++)
-    result(0,i)=dydx(x, i);
+    result(0,i)=dydx(x, i, outOfBounds);
   return result;
 }
 
-arma::mat Interpolator::operator()(const arma::mat& x) const
+arma::mat Interpolator::operator()(const arma::mat& x, OutOfBounds* outOfBounds) const
 {
   arma::mat result=zeros(x.n_rows, spline.size());
   for (int j=0; j<x.n_rows; j++)
   {
-    result.row(j) = this->operator()(x(j));
+    result.row(j) = this->operator()(x(j), outOfBounds);
   }
   return result;
 }
 
-arma::mat Interpolator::dydxs(const arma::mat& x) const
+arma::mat Interpolator::dydxs(const arma::mat& x, OutOfBounds* outOfBounds) const
 {
   arma::mat result=zeros(x.n_rows, spline.size());
   for (int j=0; j<x.n_rows; j++)
   {
-    result.row(j) = this->dydxs(x(j));
+    result.row(j) = this->dydxs(x(j), outOfBounds);
   }
   return result;
 }
 
-arma::mat Interpolator::xy(const arma::mat& x) const
+arma::mat Interpolator::xy(const arma::mat& x, OutOfBounds* outOfBounds) const
 {
-  return arma::mat(join_rows(x, operator()(x)));
+  return arma::mat(join_rows(x, operator()(x, outOfBounds)));
 }
 
 arma::mat integrate(const arma::mat& xy)

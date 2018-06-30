@@ -20,6 +20,9 @@
 #include "split.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+
+#include "GEOMAlgo_Splitter.hxx"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -35,6 +38,16 @@ namespace cad {
 defineType(Split);
 addToFactoryTable(Feature, Split);
 
+size_t Split::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*source_;
+  h+=*target_;
+  return h.getHash();
+}
+
+
 Split::Split(): DerivedFeature()
 {}
 
@@ -42,20 +55,18 @@ Split::Split(): DerivedFeature()
 TopoDS_Shape makeSplit(const Feature& tool, const Feature& target)
 {
   GEOMAlgo_Splitter spl;
-  spl.AddShape(target);
+//   spl.AddShape(target);
+  spl.AddArgument(target);
+  
   spl.AddTool(tool);
+  
   spl.Perform();
   return spl.Shape();
 }
 
 Split::Split(FeaturePtr source, FeaturePtr target)
 : DerivedFeature(target), source_(source), target_(target)
-{
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=*source_;
-  h+=*target_;
-}
+{}
 
 void Split::build()
 {

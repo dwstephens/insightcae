@@ -39,200 +39,50 @@
 
 
 
-BGParsingThread::BGParsingThread()
+
+
+
+ISCADModel::ISCADModel(QWidget* parent, bool dobgparsing)
+: QTextEdit(parent),
+  unsaved_(false),
+  doBgParsing_(dobgparsing),
+  bgparsethread_(),
+  skipPostprocActions_(true)
 {
-}
-
-void BGParsingThread::launch(const std::string& script)
-{
-    script_=script;
-    start();
-}
-
-void BGParsingThread::run()
-{
-    std::istringstream is(script_);
-
-    int failloc=-1;
-
-    model_.reset(new insight::cad::Model);
-
-    bool r=false;
-    try
-    {
-      r=insight::cad::parseISCADModelStream(is, model_.get(), &failloc, &syn_elem_dir_);
-    }
-    catch (...)
-    {
-    }
+    setFontFamily("Monospace");
+    setContextMenuPolicy(Qt::CustomContextMenu);
     
-    if (!r) // fail if we did not get a full match
-    {
-        model_.reset();
-        syn_elem_dir_.reset();
-    }
-}
+    connect
+        (
+          this, SIGNAL(selectionChanged()),
+          this, SLOT(onEditorSelectionChanged())
+        );
 
+    connect
+        (
+          this, SIGNAL(customContextMenuRequested(const QPoint&)),
+          this, SLOT(showEditorContextMenu(const QPoint&))
+        );
 
+    highlighter_=new ISCADSyntaxHighlighter(document());
 
-void ISCADModel::onGraphicalSelectionChanged(QoccViewWidget* aView)
-{
-    // Remove previously displayed sub objects from display
-    BOOST_FOREACH(Handle_AIS_InteractiveObject& o, additionalDisplayObjectsForSelection_)
-    {
-        aView->getContext()->Erase(o, false);
-    }
-    additionalDisplayObjectsForSelection_.clear();
-
-    // Display sub objects for current selection
-    if (QFeatureItem* ms = checkGraphicalSelection<QFeatureItem>(aView))
-    {
-        insight::cad::Feature& sm=ms->solidmodel();
-        const insight::cad::Feature::RefPointsList& pts=sm.getDatumPoints();
-
-        // reverse storage to detect collocated points
-        typedef std::map<arma::mat, std::string, insight::compareArmaMat> trpts;
-        trpts rpts;
-        BOOST_FOREACH(const insight::cad::Feature::RefPointsList::value_type& p, pts)
-        {
-            const std::string& name=p.first;
-            const arma::mat& xyz=p.second;
-//             std::cout<<name<<":"<<xyz<<std::endl;
-
-            trpts::iterator j=rpts.find(xyz);
-            if (j!=rpts.end())
-            {
-                j->second = j->second+"="+name;
-            }
-            else
-            {
-                rpts[xyz]=name;
-            }
-        }
-
-        BOOST_FOREACH(const trpts::value_type& p, rpts)
-        {
-            const std::string& name=p.second;
-            const arma::mat& xyz=p.first;
-            Handle_AIS_InteractiveObject o
-            (
-	      new insight::cad::InteractiveText(name, xyz)
-// 	      new AIS_LengthDimension(gp_Pnt(0,0,0), gp_Pnt(0.321,0,0), gp_Pln(gp_Pnt(0,0,0), gp_Vec(0,1,0)))
-	    );
-            additionalDisplayObjectsForSelection_.push_back(o);
-            aView->getContext()->Display(o, false);
-//             aView->getContext()->SetColor(o, Quantity_NOC_BLACK, false);
-        }
-    }
-
-    aView->getContext()->UpdateCurrentViewer();
-}
-
-
-
-ISCADModel::ISCADModel(QWidget* parent)
-: QWidget(parent),
-    unsaved_(false),
-    doBgParsing_(true),
-    bgparsethread_(),
-    skipPostprocActions_(true)
-{
-    QHBoxLayout* layout = new QHBoxLayout(this);
-    QSplitter *spl=new QSplitter(Qt::Horizontal);
-    layout->addWidget(spl);
-
-    context_=new QoccViewerContext;
-
-    viewer_=new QoccViewWidget(context_->getContext(), spl);
-    spl->addWidget(viewer_);
-    
-    connect(viewer_,
-            SIGNAL(popupMenu( QoccViewWidget*, const QPoint)),
-            this,
-            SLOT(popupMenu(QoccViewWidget*,const QPoint))
-           );
-    connect(viewer_,
-            SIGNAL(selectionChanged(QoccViewWidget*)),
-            this,
-            SLOT(onGraphicalSelectionChanged(QoccViewWidget*))
-           );
-
-    editor_=new QTextEdit(spl);
-    editor_->setFontFamily("Monospace");
-    editor_->setContextMenuPolicy(Qt::CustomContextMenu);
-    spl->addWidget(editor_);
-    
-    connect(editor_, SIGNAL(selectionChanged()), this, SLOT(onEditorSelectionChanged()));
-    connect(editor_, SIGNAL(customContextMenuRequested(const QPoint&)),
-            this, SLOT(showEditorContextMenu(const QPoint&)));
-
-
-    highlighter_=new ISCADSyntaxHighlighter(editor_->document());
-
-    QSplitter* spl2=new QSplitter(Qt::Vertical, spl);
-    QGroupBox *gb;
-    QVBoxLayout *vbox;
-
-
-    gb=new QGroupBox("Controls");
-    vbox = new QVBoxLayout;
-    QWidget*shw=new QWidget;
-    QHBoxLayout *shbox = new QHBoxLayout;
-    QPushButton *rebuildBtn=new QPushButton("Rebuild", gb);
-    QPushButton *rebuildBtnUTC=new QPushButton("Rbld to Cursor", gb);
-    connect(rebuildBtn, SIGNAL(clicked()), this, SLOT(rebuildModel()));
-    connect(rebuildBtnUTC, SIGNAL(clicked()), this, SLOT(rebuildModelUpToCursor()));
-    shbox->addWidget(rebuildBtn);
-    shbox->addWidget(rebuildBtnUTC);
-    shw->setLayout(shbox);
-    vbox->addWidget(shw);
-    
-    QCheckBox *toggleBgParse=new QCheckBox("Do BG parsing", gb);
-    toggleBgParse->setCheckState( doBgParsing_ ? Qt::Checked : Qt::Unchecked );
-    connect(toggleBgParse, SIGNAL(stateChanged(int)), this, SLOT(toggleBgParsing(int)));
-    vbox->addWidget(toggleBgParse);
-    
-    QCheckBox *toggleSkipPostprocActions=new QCheckBox("Skip Postproc Actions", gb);
-    toggleSkipPostprocActions->setCheckState( skipPostprocActions_ ? Qt::Checked : Qt::Unchecked );
-    connect(toggleSkipPostprocActions, SIGNAL(stateChanged(int)), this, SLOT(toggleSkipPostprocActions(int)));
-    vbox->addWidget(toggleSkipPostprocActions);
-    
-    gb->setLayout(vbox);
-    spl2->addWidget(gb);
-
-    gb=new QGroupBox("Model Tree");
-    vbox = new QVBoxLayout;
-    modeltree_=new QModelTree(gb);
-    modeltree_->setMinimumHeight(20);
-    connect(modeltree_, SIGNAL(itemChanged(QTreeWidgetItem*, int)), this, SLOT(onModelTreeItemChanged(QTreeWidgetItem*, int)));
-    vbox->addWidget(modeltree_);
-    gb->setLayout(vbox);
-    spl2->addWidget(gb);
-
-    gb=new QGroupBox("Notepad");
-    vbox = new QVBoxLayout;
-    notepad_=new QTextEdit;
-
-    vbox->addWidget(notepad_);
-    QPushButton* copybtn=new QPushButton("<< Copy to cursor <<");
-    vbox->addWidget(copybtn);
-    connect(copybtn, SIGNAL(clicked()), this, SLOT(onCopyBtnClicked()));
-    gb->setLayout(vbox);
-    spl2->addWidget(gb);
-
-    spl->addWidget(spl2);
-    
-    QList<int> sizes;
-    sizes << 500 << 350 << 150;
-    spl->setSizes(sizes);
-    
-    connect(&bgparsethread_, SIGNAL(finished()), this, SLOT(onBgParseFinished()));
+    connect(&bgparsethread_, SIGNAL(finished()),
+            this, SLOT(onBgParseFinished()));
+    connect(&bgparsethread_, SIGNAL(statusMessage(const QString&)),
+            this, SIGNAL(displayStatusMessage(const QString&)));
+    connect(&bgparsethread_, SIGNAL(statusProgress(int, int)),
+            this, SIGNAL(statusProgress(int, int)));
+    connect(&bgparsethread_, SIGNAL(scriptError(long,const QString&, int)),
+            this, SLOT(onScriptError(long,const QString&, int)));
     bgparseTimer_=new QTimer(this);
     connect(bgparseTimer_, SIGNAL(timeout()), this, SLOT(doBgParse()));
     restartBgParseTimer();
-    connect(editor_->document(), SIGNAL(contentsChange(int,int,int)), this, SLOT(restartBgParseTimer(int,int,int)));
-    connect(editor_->document(), SIGNAL(contentsChange(int,int,int)), this, SLOT(setUnsavedState(int,int,int)));
-   
+
+    connect(document(), SIGNAL(contentsChange(int,int,int)),
+            this, SLOT(restartBgParseTimer(int,int,int)));
+    connect(document(), SIGNAL(contentsChange(int,int,int)),
+            this, SLOT(setUnsavedState(int,int,int)));
+
 }
 
 
@@ -243,55 +93,13 @@ ISCADModel::~ISCADModel()
 }
 
 
-void ISCADModel::closeEvent(QCloseEvent *event)
-{
-    QMessageBox::StandardButton resBtn = QMessageBox::Yes;
-
-    if (unsaved_)
-    {
-        resBtn =
-            QMessageBox::question
-            (
-                this,
-                "ISCAD",
-                tr("The editor content is not saved.\nSave now?\n"),
-                QMessageBox::Cancel | QMessageBox::No | QMessageBox::Yes,
-                QMessageBox::No
-            );
-
-        if (resBtn == QMessageBox::Cancel)
-        {
-            event->ignore();
-            return;
-        }
-        else
-        {
-            if (resBtn == QMessageBox::Yes)
-            {
-                bool saved = saveModel();
-                if (!saved)
-                {
-                    saved=saveModelAs();
-                }
-                if (!saved)
-                {
-                    event->ignore();
-                    return;
-                }
-            }
-        }
-    }
-    
-    event->accept();
-}
-
 
 bool ISCADModel::saveModel()
 {
     if (filename_!="")
     {
         std::ofstream out(filename_.c_str());
-        out << editor_->toPlainText().toStdString();
+        out << toPlainText().toStdString();
         out.close();
         unsetUnsavedState();
         return true;
@@ -325,10 +133,8 @@ bool ISCADModel::saveModelAs()
 
 void ISCADModel::clearDerivedData()
 {
-    context_->getContext()->EraseAll();
-    
-    modeltree_->storeViewStates();
-    modeltree_->clear();
+  clear();
+  emit clearData();
 }
 
 
@@ -351,10 +157,7 @@ void ISCADModel::loadFile(const boost::filesystem::path& file)
     in.seekg(0, std::ios::beg);
     in.read(&contents_raw[0], contents_raw.size());
 
-
-    disconnect(editor_->document(), SIGNAL(contentsChange(int,int,int)), this, SLOT(setUnsavedState(int,int,int)));
-    editor_->setPlainText(contents_raw.c_str());
-    connect(editor_->document(), SIGNAL(contentsChange(int,int,int)), this, SLOT(setUnsavedState(int,int,int)));
+    setScript(contents_raw);
 }
 
 
@@ -362,16 +165,26 @@ void ISCADModel::setScript(const std::string& contents)
 {
     clearDerivedData();
 
-    disconnect(editor_->document(), SIGNAL(contentsChange(int,int,int)), this, SLOT(setUnsavedState(int,int,int)));
-    editor_->setPlainText(contents.c_str());
-    connect(editor_->document(), SIGNAL(contentsChange(int,int,int)), this, SLOT(setUnsavedState(int,int,int)));
+    disconnect
+        (
+          document(), SIGNAL(contentsChange(int,int,int)),
+          this, SLOT(setUnsavedState(int,int,int))
+        );
+
+    setPlainText(contents.c_str());
+
+    connect
+        (
+          document(), SIGNAL(contentsChange(int,int,int)),
+          this, SLOT(setUnsavedState(int,int,int))
+        );
 }
 
 
 void ISCADModel::onEditorSelectionChanged()
 {
-    QTextDocument *doc = editor_->document();
-    QString word=editor_->textCursor().selectedText();
+    QTextDocument *doc = document();
+    QString word=textCursor().selectedText();
     if (!(word.contains('|')||word.contains('*')))
     {
         highlighter_->setHighlightWord(word);
@@ -382,22 +195,22 @@ void ISCADModel::onEditorSelectionChanged()
 
 
 
-void ISCADModel::jump_to(const QString& name)
+void ISCADModel::jumpTo(const QString& name)
 {
     highlighter_->setHighlightWord(name);
     highlighter_->rehighlight();
 
     QRegExp expression("\\b("+name+")\\b");
-    int i=expression.indexIn(editor_->toPlainText());
+    int i=expression.indexIn(toPlainText());
 
 //   qDebug()<<"jumping "<<name<<" at i="<<i<<endl;
 
     if (i>=0)
     {
-        QTextCursor tmpCursor = editor_->textCursor();
+        QTextCursor tmpCursor = textCursor();
         tmpCursor.movePosition(QTextCursor::Start, QTextCursor::MoveAnchor, 1 );
         tmpCursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, i );
-        editor_->setTextCursor(tmpCursor);
+        setTextCursor(tmpCursor);
     }
 }
 
@@ -418,8 +231,8 @@ void ISCADModel::doBgParse()
     {
         if (!bgparsethread_.isRunning())
         {
-            emit displayStatus("Background model parsing in progress...");
-            bgparsethread_.launch( editor_->toPlainText().toStdString() );
+            emit displayStatusMessage("Background model parsing in progress...");
+            bgparsethread_.launch( toPlainText().toStdString() );
         }
     }
 }
@@ -428,41 +241,41 @@ void ISCADModel::onBgParseFinished()
 {
     if (bgparsethread_.model_)
     {
-        emit displayStatus("Background model parsing finished successfully.");
         cur_model_ = bgparsethread_.model_;
         syn_elem_dir_ = bgparsethread_.syn_elem_dir_;
-        updateClipPlaneMenu();
+
+        if (bgparsethread_.action()==BGParsingThread::Rebuild)
+        {
+        }
+
+        emit modelUpdated();
     }
-    else
-    {
-         emit displayStatus("Background model parsing failed.");
-    }
-
+    emit statusProgress(1, 1);
 }
 
 
-void ISCADModel::allShaded()
-{
-    modeltree_->setUniformDisplayMode(AIS_Shaded);
-}
+//void ISCADModel::allShaded()
+//{
+//    modeltree_->setUniformDisplayMode(AIS_Shaded);
+//}
 
-void ISCADModel::allWireframe()
-{
-    modeltree_->setUniformDisplayMode(AIS_WireFrame);
-}
-
-
+//void ISCADModel::allWireframe()
+//{
+//    modeltree_->setUniformDisplayMode(AIS_WireFrame);
+//}
 
 
-void ISCADModel::populateClipPlaneMenu(QMenu* clipplanemenu)
+
+
+void ISCADModel::populateClipPlaneMenu(QMenu* clipplanemenu, QoccViewWidget* viewer)
 {
     clipplanemenu->clear();
     
     if (cur_model_)
     {
         int added=0;
-        auto datums=cur_model_->datums();
-        BOOST_FOREACH(decltype(datums)::value_type const& v, datums)
+        insight::cad::Model::DatumTableContents datums = cur_model_->datums();
+        BOOST_FOREACH(insight::cad::Model::DatumTableContents::value_type const& v, datums)
         {
             insight::cad::DatumPtr d = v.second;
             if (d->providesPlanarReference())
@@ -471,9 +284,16 @@ void ISCADModel::populateClipPlaneMenu(QMenu* clipplanemenu)
                 
                 QSignalMapper *signalMapper = new QSignalMapper(this);
                 signalMapper->setMapping( act, reinterpret_cast<QObject*>(d.get()) );
-                connect(signalMapper, SIGNAL(mapped(QObject*)),
-                        this, SLOT(onSetClipPlane(QObject*)));
-                connect(act, SIGNAL(triggered()), signalMapper, SLOT(map()));
+                connect
+                    (
+                      signalMapper, SIGNAL(mapped(QObject*)),
+                      viewer, SLOT(onSetClipPlane(QObject*))
+                    );
+                connect
+                    (
+                      act, SIGNAL(triggered()),
+                      signalMapper, SLOT(map())
+                    );
                 clipplanemenu->addAction(act);
                 
                 added++;
@@ -492,19 +312,41 @@ void ISCADModel::populateClipPlaneMenu(QMenu* clipplanemenu)
 }
 
 
-void ISCADModel::onSetClipPlane(QObject* datumplane)
+
+void ISCADModel::connectModelTree(QModelTree* mt) const
 {
-    insight::cad::Datum* datum = reinterpret_cast<insight::cad::Datum*>(datumplane);
-    gp_Ax3 pl = datum->plane();
-    gp_Pnt p = pl.Location();
-    gp_Dir n = pl.Direction();
-    viewer_->toggleClip( p.X(),p.Y(),p.Z(), n.X(),n.Y(),n.Z() );
+  connect(&bgparsethread_, SIGNAL(createdVariable(const QString&,insight::cad::ScalarPtr)),
+          mt, SLOT(onAddScalar(const QString&,insight::cad::ScalarPtr)));
+  connect(&bgparsethread_, SIGNAL(createdVariable(const QString&,insight::cad::VectorPtr)),
+          mt, SLOT(onAddVector(const QString&,insight::cad::VectorPtr)));
+  connect(&bgparsethread_, SIGNAL(createdFeature(const QString&,insight::cad::FeaturePtr,bool)),
+          mt, SLOT(onAddFeature(const QString&,insight::cad::FeaturePtr,bool)));
+  connect(&bgparsethread_, SIGNAL(createdDatum(QString,insight::cad::DatumPtr)),
+          mt, SLOT(onAddDatum(const QString&,insight::cad::DatumPtr)));
+  connect(&bgparsethread_, SIGNAL(createdEvaluation(const QString&,insight::cad::PostprocActionPtr)),
+          mt, SLOT(onAddEvaluation(const QString&,insight::cad::PostprocActionPtr)));
+
+  connect(&bgparsethread_, SIGNAL(removedScalar(const QString&)),
+          mt, SLOT(onRemoveScalar(const QString&)));
+  connect(&bgparsethread_, SIGNAL(removedVector(const QString&)),
+          mt, SLOT(onRemoveVector(const QString&)));
+  connect(&bgparsethread_, SIGNAL(removedFeature(const QString&)),
+          mt, SLOT(onRemoveFeature(const QString&)));
+  connect(&bgparsethread_, SIGNAL(removedDatum(const QString&)),
+          mt, SLOT(onRemoveDatum(const QString&)));
+  connect(&bgparsethread_, SIGNAL(removedEvaluation(const QString&)),
+          mt, SLOT(onRemoveEvaluation(const QString&)));
+
+  connect(mt, SIGNAL(jumpTo(QString)),
+          this, SLOT(jumpTo(QString)));
+  connect(mt, SIGNAL(insertParserStatementAtCursor(QString)),
+          this, SLOT(insertTextAtCursor(QString)));
+
 }
 
-void ISCADModel::onCopyBtnClicked()
+
+void ISCADModel::onGraphicalSelectionChanged(QoccViewWidget* aView)
 {
-  editor_->textCursor().insertText(notepad_->toPlainText());  
-  notepad_->clear();
 }
 
 
@@ -518,7 +360,6 @@ void ISCADModel::editSketch(QObject* sk_ptr)
 void ISCADModel::editModel(QObject* sk_ptr)
 {
     insight::cad::ModelFeature* sk = reinterpret_cast<insight::cad::ModelFeature*>(sk_ptr);
-//     sk->executeEditor();
     emit openModel(sk->modelfile());
 }
 
@@ -553,7 +394,7 @@ void ISCADModel::toggleSkipPostprocActions(int state)
 
 void ISCADModel::insertSectionCommentAtCursor()
 {
-    editor_->textCursor().insertText("\n\n############################################################\n#####  ");
+    textCursor().insertText("\n\n############################################################\n#####  ");
 }
 
 void ISCADModel::insertFeatureAtCursor()
@@ -561,7 +402,7 @@ void ISCADModel::insertFeatureAtCursor()
     InsertFeatureDlg *dlg=new InsertFeatureDlg(this);
     if ( dlg->exec() == QDialog::Accepted )
     {
-        editor_->textCursor().insertText(dlg->insert_string_);
+        textCursor().insertText(dlg->insert_string_);
     }
 }
 
@@ -572,89 +413,9 @@ void ISCADModel::insertComponentNameAtCursor()
     if ( dlg->exec() == QDialog::Accepted )
     {
         std::string id = dlg->selected();
-        editor_->textCursor().insertText(id.c_str());
+        textCursor().insertText(id.c_str());
     }
 }
-
-
-
-void ISCADModel::onModelTreeItemChanged(QTreeWidgetItem * item, int)
-{
-    QDisplayableModelTreeItem* mi=dynamic_cast<QDisplayableModelTreeItem*>(item);
-    if (mi)
-    {
-        mi->updateDisplay();
-    }
-}
-
-
-
-
-
-
-void ISCADModel::addFeature(std::string sn, insight::cad::FeaturePtr sm, bool is_component)
-{
-    QFeatureItem* msi=modeltree_->addFeatureItem(sn, sm, context_, is_component);
-
-    connect
-    (
-        msi, SIGNAL(insertParserStatementAtCursor(const QString&)),
-        editor_, SLOT(insertPlainText(const QString&))
-    );
-    connect
-    (
-        msi, SIGNAL(jump_to(const QString&)),
-        this, SLOT(jump_to(const QString&))
-    );
-    connect
-    (
-        msi, SIGNAL(setUniformDisplayMode(const AIS_DisplayMode)),
-        modeltree_, SLOT(setUniformDisplayMode(const AIS_DisplayMode))
-    );
-    connect
-    (
-        msi, SIGNAL(addEvaluation(std::string, insight::cad::PostprocActionPtr, bool)),
-        this, SLOT(addEvaluation(std::string, insight::cad::PostprocActionPtr, bool))
-    );
-}
-
-
-
-
-void ISCADModel::addDatum(std::string sn, insight::cad::DatumPtr sm)
-{
-    modeltree_->addDatumItem(sn, sm, cur_model_, context_);
-}
-
-
-
-
-void ISCADModel::addEvaluation(std::string sn, insight::cad::PostprocActionPtr sm, bool visible)
-{
-    modeltree_->addEvaluationItem(sn, sm, context_);
-}
-
-
-
-
-void ISCADModel::addVariable(std::string sn, insight::cad::parser::scalar sv)
-{
-    modeltree_->addScalarVariableItem(sn, sv->value());
-}
-
-
-
-
-void ISCADModel::addVariable(std::string sn, insight::cad::parser::vector vv)
-{
-    QVectorVariableItem* msi = modeltree_->addVectorVariableItem(sn, vv->value(), context_);
-    connect
-    (
-        msi, SIGNAL(insertParserStatementAtCursor(const QString&)),
-        editor_, SLOT(insertPlainText(const QString&))
-    );
-}
-
 
 
 
@@ -664,102 +425,23 @@ void ISCADModel::rebuildModel(bool upToCursor)
 {
     if (!bgparsethread_.isRunning())
     {
-        disconnect(modeltree_, SIGNAL(itemChanged(QTreeWidgetItem*, int)), this, SLOT(onModelTreeItemChanged(QTreeWidgetItem*, int)));
-
-        clearDerivedData();
-
-        std::string script_content = editor_->toPlainText().toStdString();
+        std::string script_content = toPlainText().toStdString();
         if (upToCursor)
         {
-            QTextCursor c = editor_->textCursor();
+            QTextCursor c = textCursor();
             script_content = script_content.substr(0, c.position());
         }
-        std::istringstream is(script_content);
 
-        int failloc=-1;
+        bgparsethread_.launch
+            (
+              script_content,
+              skipPostprocActions_ ? BGParsingThread::Rebuild : BGParsingThread::Post
+            );
 
-        insight::cad::cache.initRebuild();
-
-        cur_model_.reset(new insight::cad::Model);
-        bool r=false;
-        
-        std::string reason="Failed: Syntax error";
-        try
-        {
-        r=insight::cad::parseISCADModelStream(is, cur_model_.get(), &failloc);
-        }
-        catch (insight::cad::parser::iscadParserException e)
-        {
-            reason="Expected: "+e.message();
-            failloc=e.from_pos();
-        }
-
-        if (!r) // fail if we did not get a full match
-        {
-            QTextCursor tmpCursor = editor_->textCursor();
-            tmpCursor.movePosition(QTextCursor::Start, QTextCursor::MoveAnchor, 1 );
-            tmpCursor.movePosition(QTextCursor::Right, QTextCursor::MoveAnchor, failloc );
-            editor_->setTextCursor(tmpCursor);
-
-            std::cout<<"Parser error at cursor location:"<<std::endl << reason <<std::endl;
-            emit displayStatus(QString(reason.c_str())+" (Cursor moved to location where parsing stopped)!");
-        }
-        else
-        {
-            emit displayStatus("Model parsed successfully. Now performing rebuild...");
-
-            context_->getContext()->EraseAll();
-
-            auto modelsteps=cur_model_->modelsteps();
-            BOOST_FOREACH(decltype(modelsteps)::value_type const& v, modelsteps)
-            {
-                bool is_comp=false;
-                if (cur_model_->components().find(v.first)!=cur_model_->components().end())
-                {
-                    is_comp=true;
-                }
-                addFeature(v.first, v.second, is_comp);
-            }
-
-            auto datums=cur_model_->datums();
-            BOOST_FOREACH(decltype(datums)::value_type const& v, datums)
-            {
-                addDatum(v.first, v.second);
-            }
-
-            if (!skipPostprocActions_)
-            {
-                auto postprocActions=cur_model_->postprocActions();
-                BOOST_FOREACH(decltype(postprocActions)::value_type const& v, postprocActions)
-                {
-                    addEvaluation(v.first, v.second);
-                }
-            }
-
-            auto scalars=cur_model_->scalars();
-            BOOST_FOREACH(decltype(scalars)::value_type const& v, scalars)
-            {
-                addVariable(v.first, v.second);
-            }
-
-            auto vectors=cur_model_->vectors();
-            BOOST_FOREACH(decltype(vectors)::value_type const& v, vectors)
-            {
-                addVariable(v.first, v.second);
-            }
-            
-            updateClipPlaneMenu();
-
-            emit displayStatus("Model rebuild successfully finished.");
-
-            insight::cad::cache.finishRebuild();
-        }
-        
-        connect(modeltree_, SIGNAL(itemChanged(QTreeWidgetItem*, int)), this, SLOT(onModelTreeItemChanged(QTreeWidgetItem*, int)));
     }
     else
     {
-        emit displayStatus("Background model parsing in progress, rebuild is currently disabled!...");
+        emit displayStatusMessage("Background model parsing in progress, rebuild is currently disabled!...");
     }
 }
 
@@ -777,36 +459,14 @@ void ISCADModel::clearCache()
 
 
 
-void ISCADModel::popupMenu( QoccViewWidget* aView, const QPoint aPoint )
-{
-    if (aView->getContext()->HasDetected())
-    {
-        if (aView->getContext()->DetectedInteractive()->HasOwner())
-        {
-            Handle_Standard_Transient own=aView->getContext()->DetectedInteractive()->GetOwner();
-            if (!own.IsNull())
-            {
-                if (PointerTransient *smo=dynamic_cast<PointerTransient*>(own.Access()))
-                {
-                    if (QModelTreeItem* mi=dynamic_cast<QModelTreeItem*>(smo->getPointer()))
-                    {
-                        // an item exists under the requested position
-                        mi->showContextMenu(aView->mapToGlobal(aPoint));
-                    }
-                }
-            }
-        }
-    }
-}
-
-
 void ISCADModel::showEditorContextMenu(const QPoint& pt)
 {
-    QMenu * menu = editor_->createStandardContextMenu();
+    QMenu * menu = createStandardContextMenu();
 
     if (syn_elem_dir_)
     {
-        QTextCursor cursor = editor_->cursorForPosition(pt);
+        QTextCursor cursor = cursorForPosition(pt);
+
         std::size_t po=/*editor_->textCursor()*/cursor.position();
         insight::cad::FeaturePtr fp=syn_elem_dir_->findElement(po);
         if (fp)
@@ -836,28 +496,32 @@ void ISCADModel::showEditorContextMenu(const QPoint& pt)
 
             if (act)
             {
-                connect(act, SIGNAL(triggered()), signalMapper, SLOT(map()));
+                connect(act, SIGNAL(triggered()),
+                        signalMapper, SLOT(map()));
                 menu->addSeparator();
                 menu->addAction(act);
             }
         }
     }
 
-    menu->exec(editor_->mapToGlobal(pt));
+    menu->exec(mapToGlobal(pt));
 }
 
 
+void ISCADModel::insertTextAtCursor(const QString& snippet)
+{
+    textCursor().insertText(snippet);
+}
 
 
 void ISCADModel::setUnsavedState(int, int rem, int ad)
 {
-//     std::cerr<<"CHANGED:"<<rem<<" "<<ad<<std::endl;
     if ((rem>0) || (ad>0))
     {
         if (!unsaved_)
         {
-            emit updateTabTitle(this, filename_, true);
             unsaved_=true;
+            emit updateTitle(filename_, true);
         }
     }
 }
@@ -866,7 +530,219 @@ void ISCADModel::setUnsavedState(int, int rem, int ad)
 
 void ISCADModel::unsetUnsavedState()
 {
-    emit updateTabTitle(this, filename_, false);
-    unsaved_=false;
+  unsaved_=false;
+  emit updateTitle(filename_, false);
 }
 
+
+void ISCADModel::onScriptError(long failpos, QString errorMsg, int range)
+{
+  if (failpos>=0)
+    {
+      std::cout<<"moving cursor to "<<failpos<<" (l "<<range<<")"<<std::endl;
+      QTextCursor tmpCursor = textCursor();
+      tmpCursor.setPosition(failpos);
+      tmpCursor.setPosition(failpos+range, QTextCursor::KeepAnchor);
+      setTextCursor(tmpCursor);
+    }
+  else
+    {
+      std::cout<<"no error location info"<<std::endl;
+    }
+
+  if (bgparsethread_.action() < BGParsingThread::Rebuild)
+    {
+      emit displayStatusMessage("Script error: "+errorMsg);
+    }
+  else
+    {
+      QMessageBox::critical
+          (
+            this,
+            "Script Error",
+            errorMsg
+          );
+    }
+}
+
+void ISCADModel::onCancelRebuild()
+{
+  if (bgparsethread_.isRunning())
+    {
+      bgparsethread_.cancelRebuild();
+    }
+}
+
+ISCADModelEditor::ISCADModelEditor(QWidget* parent)
+: QWidget(parent)
+{
+    QHBoxLayout* layout = new QHBoxLayout(this);
+    QSplitter *spl=new QSplitter(Qt::Horizontal);
+    layout->addWidget(spl);
+
+    context_=new QoccViewerContext;
+    viewer_=new QoccViewWidget(context_->getContext(), spl);
+    spl->addWidget(viewer_);
+    
+    model_=new ISCADModel(spl);
+    spl->addWidget(model_);
+
+    QSplitter* spl2=new QSplitter(Qt::Vertical, spl);
+    QGroupBox *gb;
+    QVBoxLayout *vbox;
+
+
+    gb=new QGroupBox("Controls");
+    vbox = new QVBoxLayout;
+    QWidget*shw=new QWidget;
+    QHBoxLayout *shbox = new QHBoxLayout;
+    QPushButton *rebuildBtn=new QPushButton("Rebuild", gb);
+    QPushButton *rebuildBtnUTC=new QPushButton("Rbld to Cursor", gb);
+    shbox->addWidget(rebuildBtn);
+    shbox->addWidget(rebuildBtnUTC);
+    shw->setLayout(shbox);
+    vbox->addWidget(shw);
+    
+    QCheckBox *toggleBgParse=new QCheckBox("Do BG parsing", gb);
+    toggleBgParse->setCheckState( Qt::Checked );
+    vbox->addWidget(toggleBgParse);
+    
+    QCheckBox *toggleSkipPostprocActions=new QCheckBox("Skip Postproc Actions", gb);
+    toggleSkipPostprocActions->setCheckState( Qt::Checked );
+    vbox->addWidget(toggleSkipPostprocActions);
+    
+    gb->setLayout(vbox);
+//    gb->setSizePolicy(QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum));
+    spl2->addWidget(gb);
+
+    gb=new QGroupBox("Model Tree");
+    vbox = new QVBoxLayout;
+    modeltree_=new QModelTree(gb);
+    modeltree_->setMinimumHeight(20);
+    vbox->addWidget(modeltree_);
+    gb->setLayout(vbox);
+    spl2->addWidget(gb);
+
+    gb=new QGroupBox("Notepad");
+    vbox = new QVBoxLayout;
+    notepad_=new QTextEdit;
+
+    vbox->addWidget(notepad_);
+    QPushButton* copybtn=new QPushButton("<< Copy to cursor <<");
+    vbox->addWidget(copybtn);
+    gb->setLayout(vbox);
+    spl2->addWidget(gb);
+
+    spl->addWidget(spl2);
+    
+    {
+      QList<int> sizes;
+      sizes << 4700 << 3500 << 1700;
+      spl->setSizes(sizes);
+    }
+
+    {
+      QList<int> sizes;
+      sizes << 2000 << 6000 << 2000;
+      spl2->setSizes(sizes);
+    }
+
+
+    connect(rebuildBtn, SIGNAL(clicked()),
+            model_, SLOT(rebuildModel()));
+    connect(rebuildBtnUTC, SIGNAL(clicked()),
+            model_, SLOT(rebuildModelUpToCursor()));
+    connect(toggleBgParse, SIGNAL(stateChanged(int)),
+            model_, SLOT(toggleBgParsing(int)));
+    connect(toggleSkipPostprocActions, SIGNAL(stateChanged(int)),
+            model_, SLOT(toggleSkipPostprocActions(int)));
+
+    connect(copybtn, SIGNAL(clicked()),
+            this, SLOT(onCopyBtnClicked()));
+
+    model_->connectModelTree(modeltree_);
+
+    connect(modeltree_, SIGNAL(show(QDisplayableModelTreeItem*)),
+            viewer_, SLOT(onShow(QDisplayableModelTreeItem*)));
+    connect(modeltree_, SIGNAL(hide(QDisplayableModelTreeItem*)),
+            viewer_, SLOT(onHide(QDisplayableModelTreeItem*)));
+    connect(modeltree_, SIGNAL(setDisplayMode(QDisplayableModelTreeItem*, AIS_DisplayMode)),
+            viewer_, SLOT(onSetDisplayMode(QDisplayableModelTreeItem*, AIS_DisplayMode)));
+    connect(modeltree_, SIGNAL(setColor(QDisplayableModelTreeItem*, Quantity_Color)),
+            viewer_, SLOT(onSetColor(QDisplayableModelTreeItem*, Quantity_Color)));
+    connect(modeltree_, SIGNAL(setResolution(QDisplayableModelTreeItem*, double)),
+            viewer_, SLOT(onSetResolution(QDisplayableModelTreeItem*, double)));
+
+    connect(model_, SIGNAL(updateTitle(boost::filesystem::path,bool)),
+            this, SLOT(onUpdateTitle(boost::filesystem::path,bool)));
+
+    connect(viewer_, SIGNAL(addEvaluationToModel(QString,insight::cad::PostprocActionPtr, bool)),
+            modeltree_, SLOT(onAddEvaluation(QString,insight::cad::PostprocActionPtr, bool)));
+
+    connect(viewer_, SIGNAL(insertNotebookText(QString)),
+            this, SLOT(onInsertNotebookText(QString)));
+
+}
+
+
+
+void ISCADModelEditor::onCopyBtnClicked()
+{
+  model_->textCursor().insertText(notepad_->toPlainText());
+  notepad_->clear();
+}
+
+
+void ISCADModelEditor::onInsertNotebookText(const QString& text)
+{
+  notepad_->insertPlainText(text);
+}
+
+
+void ISCADModelEditor::onUpdateTitle(const boost::filesystem::path& filepath, bool isUnsaved)
+{
+  emit updateTabTitle(this, filepath, isUnsaved);
+}
+
+
+void ISCADModelEditor::closeEvent(QCloseEvent *event)
+{
+    QMessageBox::StandardButton resBtn = QMessageBox::Yes;
+
+    if (model_->isUnsaved())
+    {
+        resBtn =
+            QMessageBox::question
+            (
+                this,
+                "ISCAD",
+                tr("The editor content is not saved.\nSave now?\n"),
+                QMessageBox::Cancel | QMessageBox::No | QMessageBox::Yes,
+                QMessageBox::No
+            );
+
+        if (resBtn == QMessageBox::Cancel)
+        {
+            event->ignore();
+            return;
+        }
+        else
+        {
+            if (resBtn == QMessageBox::Yes)
+            {
+                bool saved = model_->saveModel();
+                if (!saved)
+                {
+                    saved=model_->saveModelAs();
+                }
+                if (!saved)
+                {
+                    event->ignore();
+                    return;
+                }
+            }
+        }
+    }
+
+    event->accept();
+}

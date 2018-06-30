@@ -67,6 +67,125 @@ public:
 
 
 
+class mirrorMesh
+    : public OpenFOAMCaseElement
+{
+
+public:
+#include "basiccaseelements__mirrorMesh__Parameters.h"
+/*
+PARAMETERSET>>> mirrorMesh Parameters
+
+plane = selectablesubset {{
+ pointAndNormal set {
+  p0 = vector (0 0 0) "Origin point"
+  normal = vector (0 0 1) "plane normal"
+ }
+
+ threePoint set {
+  p0 = vector (0 0 0) "First point"
+  p1 = vector (1 0 0) "Second point"
+  p2 = vector (0 1 0) "Third point"
+ }
+
+ }} pointAndNormal "Mirror plane definition"
+
+planeTolerance = double 1e-3 "plane tolerance"
+
+<<<PARAMETERSET
+*/
+
+protected:
+    Parameters p_;
+
+public:
+    declareType ( "mirrorMesh" );
+    mirrorMesh ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
+    virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
+
+    static ParameterSet defaultParameters()
+    {
+        return Parameters::makeDefault();
+    }
+    static std::string category() { return "Meshing"; }
+};
+
+
+
+
+class setFieldsConfiguration
+    : public OpenFOAMCaseElement
+{
+
+public:
+#include "basiccaseelements__setFieldsConfiguration__Parameters.h"
+/*
+PARAMETERSET>>> setFieldsConfiguration Parameters
+
+defaultValues = array [ selectablesubset {{
+
+  scalar set {
+   name = string "alpha.phase1" "Name of the field"
+   value = double 0 "default value"
+  }
+
+  vector set {
+   name = string "U" "Name of the field"
+   value = vector (0 0 0) "default value"
+  }
+
+}} scalar ] *1 "default field values (in regions not covered by region selectors)"
+
+
+
+regionSelectors = array [ selectablesubset {{
+
+  box set {
+   p0 = vector (-1e10 -1e10 -1e10) "Minimum corner of the box"
+   p1 = vector (1e10 1e10 1e10) "Maximum corner of the box"
+
+   selectfaces = bool true "check to select faces"
+   selectcells = bool true "check to select cells"
+
+   regionValues = array [ selectablesubset {{
+
+      scalar set {
+       name = string "alpha.phase1" "Name of the field"
+       value = double 0 "field value"
+      }
+
+      vector set {
+       name = string "U" "Name of the field"
+       value = vector (0 0 0) "field value"
+      }
+
+    }} scalar ] *1 "field values in selected region"
+
+  }
+
+ }} box ]*1 "region selectors"
+
+
+<<<PARAMETERSET
+*/
+
+protected:
+    Parameters p_;
+
+public:
+    declareType ( "setFieldsConfiguration" );
+    setFieldsConfiguration ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
+    virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
+
+    static ParameterSet defaultParameters()
+    {
+        return Parameters::makeDefault();
+    }
+    static std::string category() { return "Preprocessing"; }
+};
+
+
+
 
 class volumeDrag
     : public OpenFOAMCaseElement
@@ -285,44 +404,6 @@ public:
 
 
 
-class perfectGasSinglePhaseThermophysicalProperties
-    : public transportModel
-{
-// public:
-//   CPPX_DEFINE_OPTIONCLASS(Parameters, CPPX_OPTIONS_NO_BASE,
-//     (nu, double, 1e-6)
-//   )
-public:
-#include "basiccaseelements__perfectGasSinglePhaseThermophysicalProperties__Parameters.h"
-/*
-PARAMETERSET>>> perfectGasSinglePhaseThermophysicalProperties Parameters
-
-Tref = double 300 "Reference temperature $T_{ref}$"
-pref = double 1e5 "Reference pressure $p_{ref}$"
-
-rho = double 1.0 "Density at $T_{ref}$ and $p_{ref}$"
-nu = double 1.8e-5 "Kinematic viscosity at $T_{ref}$"
-kappa = double 1.4 "Heat capacity reatio"
-Pr = double 0.7 "Prandtl number"
-
-<<<PARAMETERSET
-*/
-
-protected:
-    Parameters p_;
-
-public:
-    declareType ( "perfectGasSinglePhaseThermophysicalProperties" );
-    perfectGasSinglePhaseThermophysicalProperties ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
-    virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
-
-    static ParameterSet defaultParameters()
-    {
-        return Parameters::makeDefault();
-    }
-    static std::string category() { return "Material Properties"; }
-};
-
 
 
 
@@ -512,7 +593,8 @@ public:
 /*
 PARAMETERSET>>> solidBodyMotionDynamicMesh Parameters
 
-zonename = string "rotor" "name of the cell zone which moves"
+zonename = string "none" "Name of the cell zone which moves.
+Enter 'none', if the entire mesh shall be moved."
 
 motion = selectablesubset
 {{
@@ -522,6 +604,13 @@ motion = selectablesubset
   origin = vector (0 0 0) "origin point"
   axis = vector (0 0 1) "rotation axis"
   rpm = double 1000 "rotation rate"
+ }
+
+ oscillatingRotating
+ set {
+  origin = vector (0 0 0) "origin point"
+  amplitude = vector (0 0 1) "[deg] amplitude"
+  omega = double 1 "[rad/sec] rotation frequency"
  }
 
 }} rotation "type of motion"
@@ -543,6 +632,112 @@ public:
       return Parameters::makeDefault();
   }
   static std::string category() { return "Dynamic Mesh"; }
+};
+
+
+
+
+
+class rigidBodyMotionDynamicMesh
+: public dynamicMesh
+{
+public:
+#include "basiccaseelements__rigidBodyMotionDynamicMesh__Parameters.h"
+/*
+PARAMETERSET>>> rigidBodyMotionDynamicMesh Parameters
+
+rho = selectablesubset {{
+ field set {
+  fieldname = string "rho" "Density field name"
+ }
+ constant set {
+  rhoInf = double 1025.0 "Constant density value"
+ }
+}} constant "Density source"
+
+
+bodies = array [
+ set {
+   name = string "movingbody" "Name of the body"
+   centreOfMass = vector (0 0 0) "Location of CoG in global CS"
+   mass = double 1.0 "Mass of body"
+   Ixx = double 1.0 "Inertia Ixx"
+   Iyy = double 1.0 "Inertia Iyy"
+   Izz = double 1.0 "Inertia Izz"
+
+   patches = array [
+    string "bodysurface" "Names of patches comprising the surface of the body"
+   ] *1 "body surface patches"
+
+   innerDistance = double 1.0 "radius around body within which a solid body motion is performed."
+   outerDistance = double 1.0 "radius around body outside which the grid remains fixed."
+
+   translationConstraint = array [ selection (
+    Px Py Pz Pxyz ) Pxyz "Kind of translation constraint"
+   ] *1 "translation constraints"
+
+   rotationConstraint = array [ selection (
+    Rx Ry Rz Rxyz ) Rxyz "Kind of rotation constraint"
+   ] *1 "rotation constraints"
+
+ } ] *1 "moving bodies"
+
+
+<<<PARAMETERSET
+*/
+
+protected:
+    ParameterSet ps_; // need to use dynamic variant; will contain enhancements to above definition
+
+public:
+  declareType ( "rigidBodyMotionDynamicMesh" );
+
+  rigidBodyMotionDynamicMesh( OpenFOAMCase& c, const ParameterSet&ps = Parameters::makeDefault() );
+  virtual void addFields( OpenFOAMCase& c ) const;
+  virtual void addIntoDictionaries(OFdicts& dictionaries) const;
+
+  static ParameterSet defaultParameters()
+  {
+      return Parameters::makeDefault();
+  }
+  static std::string category() { return "Dynamic Mesh"; }
+};
+
+
+
+
+
+class porousZone
+    : public OpenFOAMCaseElement
+{
+
+public:
+#include "basiccaseelements__porousZone__Parameters.h"
+/*
+PARAMETERSET>>> porousZone Parameters
+
+name = string "porosity" "Name of the porous cell zone. It needs to exist for this configuration to work."
+d = vector (1 1 1) "Darcy coefficients for each direction"
+f = vector (0 0 0) "Forchheimer coefficients for each direction"
+
+direction_x = vector (1 0 0) "X direction of the porosity coordinate system"
+direction_y = vector (0 1 0) "Y direction of the porosity coordinate system"
+<<<PARAMETERSET
+*/
+
+protected:
+    Parameters p_;
+
+public:
+    declareType ( "porousZone" );
+    porousZone ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
+    virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
+
+    static ParameterSet defaultParameters()
+    {
+        return Parameters::makeDefault();
+    }
+    static std::string category() { return "Body Force"; }
 };
 
 

@@ -19,6 +19,7 @@
 
 #include "base/tools.h"
 #include "cadmodel.h"
+#include "cadfeature.h"
 #include "datum.h"
 #include "parser.h"
 
@@ -70,6 +71,13 @@ void Model::copyVariables(const ModelVariableTable& vars)
 }
 
 
+size_t Model::calcHash() const
+{
+  ParameterListHash h;
+  h+=modelfile_;
+#warning check, if hash is needed
+  return h.getHash();
+}
 
 
 Model::Model(const ModelVariableTable& vars)
@@ -104,8 +112,10 @@ Model::Model(const boost::filesystem::path& modelfile, const ModelVariableTable&
 
 void Model::build()
 {
+    ExecTimer t("Model::build() [file "+modelfile_.string()+"]");
+
     int failloc=-1;
-    if (!parseISCADModelFile(modelfile_, this, &failloc))
+    if (!parseISCADModelFile(modelfile_, this, &failloc, &syn_elem_dir_))
     {
         throw insight::Exception
         (
@@ -156,13 +166,17 @@ void Model::addDatumIfNotPresent(const std::string& name, DatumPtr value)
 
 void Model::addModelstep(const std::string& name, FeaturePtr value, const std::string& featureDescription)
 {
+  value->setFeatureSymbolName(name);
   modelsteps_.add(name, value);
 }
 
 void Model::addModelstepIfNotPresent(const std::string& name, FeaturePtr value, const std::string& featureDescription)
 {
     if (!modelsteps_.find(name))
+    {
+        value->setFeatureSymbolName(name);
         addModelstep(name, value);
+    }
 }
 
 void Model::addComponent(const std::string& name, FeaturePtr value, const std::string& featureDescription)

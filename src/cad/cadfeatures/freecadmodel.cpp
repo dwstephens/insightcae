@@ -19,6 +19,7 @@
 
 #include "freecadmodel.h"
 #include "base/boost_include.h"
+#include "base/tools.h"
 
 using namespace boost;
 using namespace boost::filesystem;
@@ -40,6 +41,20 @@ defineType(FreeCADModel);
 addToFactoryTable(Feature, FreeCADModel);
 
 
+size_t FreeCADModel::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=filename_;
+  h+=solidname_;
+  BOOST_FOREACH(const FreeCADModelVar& v, vars_)
+  {
+      h+=boost::fusion::at_c<0>(v);
+      h+=boost::fusion::at_c<1>(v)->value();
+  }
+  return h.getHash();
+}
+
 
 
 FreeCADModel::FreeCADModel()
@@ -59,15 +74,6 @@ FreeCADModel::FreeCADModel
   solidname_(solidname),
   vars_(vars)
 {
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=filename_;
-  h+=solidname_;
-  BOOST_FOREACH(const FreeCADModelVar& v, vars)
-  {
-      h+=boost::fusion::at_c<0>(v);
-      h+=boost::fusion::at_c<1>(v)->value();
-  }
 }
 
 
@@ -83,6 +89,8 @@ FeaturePtr FreeCADModel::create ( const boost::filesystem::path& filename, const
 
 void FreeCADModel::build()
 {
+    ExecTimer t("FreeCADModel::build() ["+featureSymbolName()+"]");
+
     boost::filesystem::path infilename = filename_;
     if ( !exists ( infilename ) ) {
         infilename=sharedModelFilePath ( filename_.string() );

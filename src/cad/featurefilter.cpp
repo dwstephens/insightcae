@@ -196,11 +196,17 @@ public:
 	  ( lit("in") >> '(' > r_featureset > ')' ) 
 	    [ qi::_val = phx::construct<FilterPtr>(new_<in>(*qi::_1)) ]
 	  |
-	  ( lit("maximal") >> '(' > r_scalar_qty_expression >> ( ( ',' > int_ ) | attr(0) ) >> ')' ) 
-	    [ qi::_val = phx::construct<FilterPtr>(new_<maximal>(*qi::_1, qi::_2)) ]
+	  ( lit("maximal") >> '(' > r_scalar_qty_expression
+	    >> ( ( ',' > int_ ) | attr(0) )
+	    >> ( ( lit("through") > int_ ) | attr(-1) )
+	    >> ')' )
+	    [ qi::_val = phx::construct<FilterPtr>(new_<maximal>(*qi::_1, qi::_2, qi::_3)) ]
 	  |
-	  ( lit("minimal") >> '(' > r_scalar_qty_expression >> ( ( ',' > int_ ) | attr(0) ) >> ')' ) 
-	    [ qi::_val = phx::construct<FilterPtr>(new_<minimal>(*qi::_1, qi::_2)) ]
+	  ( lit("minimal") >> '(' > r_scalar_qty_expression
+	    >> ( ( ',' > int_ ) | attr(0) )
+	    >> ( ( lit("through") > int_ ) | attr(-1) )
+	    >> ')' )
+	    [ qi::_val = phx::construct<FilterPtr>(new_<minimal>(*qi::_1, qi::_2, qi::_3)) ]
 	  |
 	  ( r_qty_comparison ) 
 	    [ qi::_val = qi::_1 ]
@@ -284,6 +290,8 @@ public:
 	    [ qi::_val = phx::construct<scalarQuantityComputer::Ptr>(new_<sqrt<double> >(*qi::_1)) ]
 	  | ( lit("sqr") > '(' > r_scalar_qty_expression > ')' ) 
 	    [ qi::_val = phx::construct<scalarQuantityComputer::Ptr>(new_<sqr<double> >(*qi::_1)) ]
+	  | ( lit("pow") > '(' > r_scalar_qty_expression > ',' > r_scalar_qty_expression > ')' ) 
+	    [ qi::_val = phx::construct<scalarQuantityComputer::Ptr>(new_<powed<double,double> >(*qi::_1,*qi::_2)) ]
 	  | ( lit("angleMag") > '(' > r_mat_qty_expression > ',' > r_mat_qty_expression > ')' ) // before "angle"!
 	    [ qi::_val = phx::construct<scalarQuantityComputer::Ptr>(new_<angleMag<arma::mat,arma::mat> >(*qi::_1, *qi::_2)) ]
 	  | ( lit("angle") > '(' > r_mat_qty_expression > ',' > r_mat_qty_expression > ')' ) 
@@ -428,8 +436,10 @@ struct EdgeFeatureFilterExprParser
 	( lit("isPartOfSolid") > '(' > FeatureFilterExprParser<Iterator>::r_featureset > ')' ) 
 	  [ qi::_val = phx::construct<FilterPtr>(new_<isPartOfSolidEdge>(*qi::_1)) ]
 	|
-	( lit("isCoincident") > '(' > FeatureFilterExprParser<Iterator>::r_featureset > ')' ) 
-	  [ qi::_val = phx::construct<FilterPtr>(new_<coincidentEdge>(*qi::_1)) ]
+	( lit("isCoincident") >> '(' >> FeatureFilterExprParser<Iterator>::r_featureset 
+                          >> ( ( ',' >> FeatureFilterExprParser<Iterator>::r_scalar_qty_expression ) | qi::attr(phx::construct<scalarQuantityComputer::Ptr>(new_<constantQuantity<double> >(1e-3))) ) 
+                          >> ')' ) 
+	  [ qi::_val = phx::construct<FilterPtr>(new_<coincidentEdge>(*qi::_1, qi::_2)) ]
 	|
 	( lit("isIdentical") > '(' > FeatureFilterExprParser<Iterator>::r_featureset > ')' ) 
 	  [ qi::_val = phx::construct<FilterPtr>(new_<identicalEdge>(*qi::_1)) ]
@@ -448,7 +458,10 @@ struct EdgeFeatureFilterExprParser
 	( lit("len") ) 
 	  [ qi::_val = phx::construct<scalarQuantityComputer::Ptr>(new_<edgeLen>()) ]
 	|
-	( lit("radialLen") > 
+	( lit("circRadius") )
+	    [ qi::_val = phx::construct<scalarQuantityComputer::Ptr>(new_<circRadius>()) ]
+	|
+	( lit("radialLen") >
 	    '(' > FeatureFilterExprParser<Iterator>::r_mat_qty_expression > //ax
 	    ',' > FeatureFilterExprParser<Iterator>::r_mat_qty_expression >  //p0
 	    ')' ) 
@@ -517,8 +530,11 @@ struct FaceFeatureFilterExprParser
 	( lit("isPartOfSolid") > '(' > FeatureFilterExprParser<Iterator>::r_featureset  > ')') 
 	  [ qi::_val = phx::construct<FilterPtr>(new_<isPartOfSolidFace>(*qi::_1)) ]
 	|
-	( lit("isCoincident") > '(' > FeatureFilterExprParser<Iterator>::r_featureset > ')' ) 
-	  [ qi::_val = phx::construct<FilterPtr>(new_<coincidentFace>(*qi::_1)) ]
+	( lit("isCoincident") >> '(' 
+            >> FeatureFilterExprParser<Iterator>::r_featureset 
+            >> ( ( ',' >> FeatureFilterExprParser<Iterator>::r_scalar_qty_expression ) | qi::attr(phx::construct<scalarQuantityComputer::Ptr>(new_<constantQuantity<double> >(1e-3))) ) 
+            >> ')' ) 
+	  [ qi::_val = phx::construct<FilterPtr>(new_<coincidentFace>(*qi::_1, qi::_2)) ]
 	|
 	( lit("isIdentical") > '(' > FeatureFilterExprParser<Iterator>::r_featureset > ')' ) 
 	  [ qi::_val = phx::construct<FilterPtr>(new_<identicalFace>(*qi::_1)) ]

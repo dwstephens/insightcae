@@ -20,6 +20,7 @@
 #include "booleanunion.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
 
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
@@ -40,6 +41,14 @@ defineType(BooleanUnion);
 addToFactoryTable(Feature, BooleanUnion);
 
 
+size_t BooleanUnion::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*m1_;
+  if (m2_) h+=*m2_;
+  return h.getHash();
+}
 
 
 BooleanUnion::BooleanUnion()
@@ -53,9 +62,7 @@ BooleanUnion::BooleanUnion(FeaturePtr m1)
 : DerivedFeature(m1), 
   m1_(m1)
 {
-    ParameterListHash h(this);
-    h+=this->type();
-    h+=*m1_;
+    setFeatureSymbolName( "merged("+m1->featureSymbolName()+")" );
 }
 
 
@@ -66,10 +73,7 @@ BooleanUnion::BooleanUnion(FeaturePtr m1, FeaturePtr m2)
   m1_(m1),
   m2_(m2)
 {
-    ParameterListHash h(this);
-    h+=this->type();
-    h+=*m1_;
-    h+=*m2_;
+    setFeatureSymbolName( "("+m1->featureSymbolName()+" | "+m2->featureSymbolName()+")" );
 }
 
 
@@ -93,6 +97,8 @@ FeaturePtr BooleanUnion::create(FeaturePtr m1, FeaturePtr m2)
      
 void BooleanUnion::build()
 {
+    ExecTimer t("BooleanUnion::build() ["+featureSymbolName()+"]");
+    
     if (m1_ && m2_)
     {
 
@@ -100,7 +106,17 @@ void BooleanUnion::build()
         {
             copyDatums(*m1_, "m1_");
             copyDatums(*m2_, "m2_");
-            setShape(BRepAlgoAPI_Fuse(*m1_, *m2_).Shape());
+            BRepAlgoAPI_Fuse fuser(*m1_, *m2_);
+            fuser.Build();
+            if (!fuser.IsDone())
+            {
+                throw CADException
+                (
+                    shared_from_this(),
+                    "could not perform fuse operation."
+                );
+            }
+            setShape(fuser.Shape());
             cache.insert(shared_from_this());
         }
         else
@@ -110,7 +126,7 @@ void BooleanUnion::build()
         m1_->unsetLeaf();
         m2_->unsetLeaf();
     }
-    else
+    else if (m1_)
     {
         copyDatums(*m1_);
         m1_->unsetLeaf();
@@ -119,11 +135,29 @@ void BooleanUnion::build()
         for (TopExp_Explorer ex(*m1_, TopAbs_SOLID); ex.More(); ex.Next())
         {
             if (res.IsNull())
+            {
                 res=TopoDS::Solid(ex.Current());
+            }
             else
-                res=BRepAlgoAPI_Fuse(res, TopoDS::Solid(ex.Current())).Shape();
+            {
+                BRepAlgoAPI_Fuse fuser(res, TopoDS::Solid(ex.Current()));
+                fuser.Build();
+                if (!fuser.IsDone())
+                {
+                    throw CADException
+                    (
+                        shared_from_this(),
+                        "could not perform merge operation."
+                    );
+                }                
+                res=fuser.Shape();
+            }
         }
         setShape(res);
+    } 
+    else
+    {
+        throw CADException(shared_from_this(), "no valid base feature for fuse operation provided.");
     }
 }
 

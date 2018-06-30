@@ -20,6 +20,8 @@
 #include "rotatedhelicalsweep.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -34,6 +36,19 @@ namespace cad {
 
 defineType(RotatedHelicalSweep);
 addToFactoryTable(Feature, RotatedHelicalSweep);
+
+size_t RotatedHelicalSweep::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*sk_;
+  h+=p0_->value();
+  h+=axis_->value();
+  h+=P_->value();
+  h+=revoffset_->value();
+  return h.getHash();
+}
+
 
 RotatedHelicalSweep::RotatedHelicalSweep(): Feature()
 {}
@@ -103,18 +118,12 @@ TopoDS_Shape makeRotatedHelicalSweep(const Feature& sk, const arma::mat& p0, con
 
 RotatedHelicalSweep::RotatedHelicalSweep(FeaturePtr sk, VectorPtr p0, VectorPtr axis, ScalarPtr P, ScalarPtr revoffset)
 : sk_(sk), p0_(p0), axis_(axis), P_(P), revoffset_(revoffset)
-{
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=*sk_;
-  h+=p0_->value();
-  h+=axis_->value();
-  h+=P_->value();
-  h+=revoffset_->value();
-}
+{}
 
 void RotatedHelicalSweep::build()
 {
+  ExecTimer t("RotatedHelicalSweep::build() ["+featureSymbolName()+"]");
+
   setShape(makeRotatedHelicalSweep(*sk_, p0_->value(), axis_->value(), P_->value(), revoffset_->value()));
 }
 

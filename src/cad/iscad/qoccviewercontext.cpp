@@ -28,21 +28,26 @@ QoccViewerContext::QoccViewerContext()
   // Create the OCC Viewers
   TCollection_ExtendedString a3DName("Visual3D");
   myViewer = createViewer( "DISPLAY", a3DName.ToExtString(), "", 1000.0 );
-#if (OCC_VERSION_MINOR<6)
+#if ((OCC_VERSION_MAJOR<7)&&(OCC_VERSION_MINOR<6))
   myViewer->Init();
 #endif
+#if (OCC_VERSION_MAJOR<7)
   myViewer->SetZBufferManagment(Standard_False);
+#endif
   myViewer->SetDefaultViewProj( V3d_Zpos );	// Top view
 
   myContext = new AIS_InteractiveContext( myViewer );
 
-  showGrid         = false;
   myGridType       = Aspect_GT_Rectangular;
   myGridMode       = Aspect_GDM_Lines;
   myGridColor      = Quantity_NOC_RED4;
   myGridTenthColor = Quantity_NOC_GRAY90;
 
+#if (OCC_VERSION_MAJOR<7)
   myContext->SetHilightColor(Quantity_NOC_RED) ;
+#else
+  //myContext->Se
+#endif
 
   setGridOffset (0.0);
   gridXY();
@@ -75,9 +80,9 @@ Handle_V3d_Viewer QoccViewerContext::createViewer
 {
 #ifndef WNT
   
-#if (OCC_VERSION_MINOR>=6)
+#if ((OCC_VERSION_MAJOR>=7)||(OCC_VERSION_MINOR>=6))
   static Handle_Graphic3d_GraphicDriver defaultdevice;
-#if (OCC_VERSION_MINOR>6)
+#if ((OCC_VERSION_MAJOR>=7)||(OCC_VERSION_MINOR>6))
   Handle_Aspect_DisplayConnection displayConnection(new Aspect_DisplayConnection());
   defaultdevice = new OpenGl_GraphicDriver( displayConnection );
 //   Handle_OpenGl_GraphicDriver::DownCast(defaultdevice)->ChangeOptions().ffpEnable=false; // fix to make clip planes work
@@ -103,8 +108,7 @@ Handle_V3d_Viewer QoccViewerContext::createViewer
       Quantity_NOC_WHITE,
 //      Quantity_NOC_BLACK,
      V3d_ZBUFFER,
-     V3d_GOURAUD,
-     V3d_WAIT 
+     V3d_GOURAUD
     );
 #else
   static Handle( Graphic3d_WNTGraphicDevice ) defaultdevice;
@@ -128,7 +132,7 @@ Handle_V3d_Viewer QoccViewerContext::createViewer
      V3d_WAIT 
     );
 #endif  // WNT
-    
+        
     return viewer;
 }
 
@@ -182,27 +186,7 @@ void QoccViewerContext::gridYZ  ( void )
   myViewer->SetPrivilegedPlane( aPlane );
 }
 
-/*!
-\brief  switch the grid on/off.
- */
-void QoccViewerContext::toggleGrid  ( void )
-{
-  if (showGrid){
-    showGrid = false;
-    if (myGridType == Aspect_GT_Rectangular){
-      myGridType = Aspect_GT_Circular;
-    } else {
-      myGridType = Aspect_GT_Rectangular;
-    }
-    myViewer->DeactivateGrid();
-    myViewer->SetGridEcho( Standard_False );
-  } else {
-    showGrid = true;
-    myViewer->ActivateGrid( myGridType , myGridMode );
-    myViewer->Grid()->SetColors( myGridColor, myGridTenthColor );
-    myViewer->SetGridEcho ( Standard_True );
-  }
-}
+
 
 
 
@@ -243,11 +227,11 @@ void QoccViewerContext::gridCirc ( void )
   myViewer->Grid()->SetColors( myGridColor, myGridTenthColor );
 }
 
-void QoccViewerContext::setGridOffset (Quantity_Length offset)
+void QoccViewerContext::setGridOffset (double offset)
 {
-  Quantity_Length radius;
-  Quantity_Length xSize, ySize;
-  Quantity_Length oldOffset;
+  double radius;
+  double xSize, ySize;
+  double oldOffset;
   
   myViewer->CircularGridGraphicValues( radius, oldOffset );
   myViewer->SetCircularGridGraphicValues( radius, offset);

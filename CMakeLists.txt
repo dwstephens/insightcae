@@ -27,6 +27,8 @@ OPTION(INSIGHT_BUILD_ISCAD "Build the ISCAD editor (OCE and Qt is required)" ON)
 OPTION(INSIGHT_BUILD_TOOLKIT "Build the Insight toolkit and related tools" ON)
 OPTION(INSIGHT_BUILD_PYTHONBINDINGS "Build python bindings for Insight toolkit and related tools (SWIG is required)" ON)
 OPTION(INSIGHT_BUILD_WEBWORKBENCH "Build the Web-Workbench (Wt is required)" OFF)
+OPTION(INSIGHT_BUILD_INSTALLDESKTOP "Install MIME types and Desktop integration during build" ON)
+OPTION(INSIGHT_FORCE_OCC "Use OCC, even if OCE is available" OFF)
 option(BUILD_DOCUMENTATION "Use Doxygen to create the documentation (doxygen is required)" OFF)
 
 if (INSIGHT_BUILD_ISCAD AND NOT INSIGHT_BUILD_CAD)
@@ -51,7 +53,9 @@ elseif (INSIGHT_BUILD_WORKBENCH AND NOT INSIGHT_BUILD_OPENFOAM AND NOT INSIGHT_B
  SET(CPACK_PACKAGE_NAME "${CPACK_PACKAGE_NAME}-eng")
 endif()
 
+set(CPACK_RPM_COMPONENT_INSTALL ON)
 set(CPACK_DEB_COMPONENT_INSTALL ON)
+set(CPACK_RPM_COMPONENT_INSTALL ON)
 set(CMAKE_INSTALL_DEFAULT_COMPONENT_NAME base)
 set(INSIGHT_INSTALL_COMPONENT base)
 
@@ -82,9 +86,9 @@ if(DPKG_PROGRAM)
     OUTPUT_STRIP_TRAILING_WHITESPACE
   )
   set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME_LOWERCASE}_${PACKAGE_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
-  set(CPACK_DEBIAN_PACKAGE_DEPENDS "gnuplot,python-numpy,python-scipy,python-matplotlib,texlive-base,texlive-latex-extra,imagemagick")
+  set(CPACK_DEBIAN_PACKAGE_DEPENDS "gnuplot,python-numpy,python-scipy,python-matplotlib,texlive-base,texlive-latex-extra,imagemagick,texlive-fonts-recommended,texlive-font-utils,xdg-utils")
   if (INSIGHT_BUILD_OPENFOAM)
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},openfoamplus-insightcae,paraview-insightcae|paraview-offscreen-insightcae")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},openfoamplus-insightcae,paraview-insightcae|paraview-offscreen-insightcae,openmpi-bin")
   endif()
 #   if (INSIGHT_BUILD_CODEASTER)
 #     set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},codeaster-insightcae")
@@ -93,12 +97,34 @@ if(DPKG_PROGRAM)
     set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},liboce-insightcae,freecad-insightcae")
   endif()
   if (INSIGHT_BUILD_CAD)
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},libdxflib (>=3.7.5),libsalomegeom (>=7.2.30)")
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},libdxflib (>=3.7.5)")
   endif()
 else(DPKG_PROGRAM)
-  SET(CPACK_GENERATOR "TGZ")
-  set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME_LOWERCASE}_${PACKAGE_VERSION}_${CMAKE_SYSTEM_NAME}")
+ if(EXISTS /etc/redhat-release)
+   SET(CPACK_GENERATOR "RPM")
+   execute_process(
+     COMMAND uname -m
+     OUTPUT_VARIABLE CPACK_RPM_PACKAGE_ARCHITECTURE
+     OUTPUT_STRIP_TRAILING_WHITESPACE
+   )
+   set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME_LOWERCASE}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}-${CPACK_PACKAGE_VERSION_PATCH}.${CPACK_RPM_PACKAGE_ARCHITECTURE}")
+  set(CPACK_RPM_PACKAGE_REQUIRES "/usr/bin/gnuplot-wx,/usr/bin/pdflatex,/usr/bin/convert") #numpy,scipy,matplotlib
+  if (INSIGHT_BUILD_OPENFOAM)
+    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES},/usr/bin/pvbatch")
+#   if (INSIGHT_BUILD_CODEASTER)
+#     set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES}, codeaster-insightcae")
+#   endif()
+  endif()
+  if (INSIGHT_BUILD_CAD OR INSIGHT_BUILD_FREECAD)
+    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES},/usr/bin/FreeCAD")
+  endif()
+#  if (INSIGHT_BUILD_CAD)
+#    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES}, libdxflib >=3.7.5")
+#  endif()
+ endif()
 endif(DPKG_PROGRAM)
+
+add_subdirectory(src/desktop)
 
 SET(CPACK_SET_DESTDIR ON)
 
@@ -122,7 +148,7 @@ SET( _boost_TEST_VERSIONS ${Boost_ADDITIONAL_VERSIONS} "1.55.0" "1.49.0" "1.41.0
 	"1.38.0" "1.37.0"
         "1.36.1" "1.36.0" "1.35.1" "1.35.0" "1.35" "1.34.1" "1.34.0" "1.34"
         "1.33.1" "1.33.0" "1.33" )
-find_package(Boost COMPONENTS system filesystem regex date_time thread iostreams python program_options REQUIRED)
+find_package(Boost COMPONENTS system filesystem regex date_time timer thread iostreams python program_options REQUIRED)
 
 
 include_directories(${ARMADILLO_INCLUDE_DIRS})
@@ -175,10 +201,10 @@ ENDIF()
 ADD_DEFINITIONS(
     #-std=c++11 # Or -std=c++0x
     -std=c++0x
+    -Wno-old-style-cast
     -ftemplate-depth=900
     -fpermissive 
     -Wno-deprecated 
-    -Wno-old-style-cast
     # Other flags
 )
 

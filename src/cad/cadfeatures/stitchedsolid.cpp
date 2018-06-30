@@ -22,6 +22,8 @@
 #include "BRepCheck_Shell.hxx"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -36,24 +38,31 @@ namespace cad {
 defineType(StitchedSolid);
 addToFactoryTable(Feature, StitchedSolid);
 
+size_t StitchedSolid::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  BOOST_FOREACH(const FeaturePtr& f, faces_)
+  {
+      h+=*f;
+  }
+  h+=tol_->value();
+  return h.getHash();
+}
+
+
 StitchedSolid::StitchedSolid()
 {}
 
 
 StitchedSolid::StitchedSolid(const std::vector<FeaturePtr>& faces, ScalarPtr tol)
 : faces_(faces), tol_(tol)
-{
-    ParameterListHash h(this);
-    h+=this->type();
-    BOOST_FOREACH(const FeaturePtr& f, faces_)
-    {
-        h+=*f;
-    }
-    h+=tol_->value();
-}
+{}
 
 void StitchedSolid::build()
 {
+  ExecTimer t("StitchedSolid::build() ["+featureSymbolName()+"]");
+
   BRepBuilderAPI_Sewing sew(tol_->value());
   
 //   TopoDS_Compound aRes;

@@ -33,8 +33,8 @@ SoftwareEnvironment::SoftwareEnvironment()
 }
 
 SoftwareEnvironment::SoftwareEnvironment(const SoftwareEnvironment& other)
+: executionMachine_(other.executionMachine_)
 {
-
 }
 
 SoftwareEnvironment::~SoftwareEnvironment()
@@ -60,10 +60,14 @@ void SoftwareEnvironment::executeCommand
   forkCommand(p_in, cmd, argv, ovr_machine);
     
   std::string line;
-  while (std::getline(p_in, line))
+  while (std::getline(p_in.out(), line))
   {
-    cout<<">> "<<line<<endl;
+    cout<<line<<endl;
     if (output) output->push_back(line);
+  }
+  while (std::getline(p_in.err(), line))
+  {
+    cout<<line<<endl;
   }
   p_in.close();
 

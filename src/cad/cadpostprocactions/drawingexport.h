@@ -53,6 +53,9 @@ class DrawingExport
   std::vector<DrawingViewDefinitions> viewdefs_;
   TopoDS_Shape shape_;
 
+  virtual size_t calcHash() const;
+  virtual void build();
+
 public:
   DrawingExport
   (
@@ -60,9 +63,8 @@ public:
     std::vector<DrawingViewDefinitions> viewdefs
   );
   
-  virtual void build();
 
-  virtual Handle_AIS_InteractiveObject createAISRepr(const Handle_AIS_InteractiveContext& context) const;
+  virtual Handle_AIS_InteractiveObject createAISRepr() const;
   virtual void write(std::ostream& ) const;
 };
 }

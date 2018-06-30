@@ -33,6 +33,23 @@ using namespace boost::filesystem;
 namespace insight
 {
 
+
+TemporaryCaseDir::TemporaryCaseDir(bool keep, const std::string& prefix)
+: keep_(keep)
+{
+  if (getenv("INSIGHT_KEEPTEMPCASEDIR"))
+    keep_=true;
+  dir = unique_path(prefix+"%%%%%%%");
+  create_directories(dir);
+}
+
+TemporaryCaseDir::~TemporaryCaseDir()
+{
+  if (!keep_)
+    remove_all(dir);
+}
+
+
 SharedPathList::SharedPathList()
 {
   char *var_usershareddir=getenv("INSIGHT_USERSHAREDDIR");
@@ -111,5 +128,15 @@ void SharedPathList::insertFileDirectoyIfNotPresent(const path& sp)
 
 
 SharedPathList SharedPathList::searchPathList;
+
+
+
+
+ExecTimer::ExecTimer(const std::string& name)
+: boost::timer::auto_cpu_timer(boost::timer::default_places, name+": END %ws wall, %us usr + %ss sys = %ts CPU (%p%)\n")
+{
+    std::cout<< ( name+": BEGIN\n" );
+}
+
 
 }

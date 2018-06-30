@@ -41,6 +41,15 @@ addToFactoryTable(Feature, Line);
 
 
 
+size_t Line::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=p0_->value();
+  h+=p1_->value();
+  return h.getHash();
+}
+
 
 Line::Line()
 : Feature()
@@ -53,10 +62,6 @@ Line::Line()
 Line::Line(VectorPtr p0, VectorPtr p1)
 : p0_(p0), p1_(p1)
 {
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=p0_->value();
-  h+=p1_->value();
 }
 
 
@@ -76,7 +81,9 @@ void Line::build()
 //   refvalues_["L"]=arma::norm(p1-p0, 2);
   refvectors_["ex"]=(p1_->value() - p0_->value())/arma::norm(p1_->value() - p0_->value(), 2);
   
-  setShape(BRepBuilderAPI_MakeEdge(GC_MakeSegment(to_Pnt(p0_->value()), to_Pnt(p1_->value()))));
+  setShape(BRepBuilderAPI_MakeEdge(
+      GC_MakeSegment(to_Pnt(p0_->value()), to_Pnt(p1_->value())).Value()
+  ));
 }
 
 

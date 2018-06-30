@@ -41,6 +41,16 @@ defineType(Compound);
 addToFactoryTable(Feature, Compound);
 
 
+size_t Compound::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  BOOST_FOREACH(const CompoundFeatureMap::value_type& comp, components_)
+  {
+    h+=comp.second;
+  }
+  return h.getHash();
+}
 
 
 Compound::Compound()
@@ -52,12 +62,9 @@ Compound::Compound()
 
 Compound::Compound(const CompoundFeatureList& m1)
 {
-  ParameterListHash h(this);
-  h+=this->type();
   for (size_t i=0; i<m1.size(); i++)
   {
     components_[str( format("component%d") % (i+1) )] = m1[i];
-    h+=m1[i];
   }
 }
 
@@ -89,21 +96,43 @@ FeaturePtr Compound::create_map( const CompoundFeatureMap& m1 )
     
 void Compound::build()
 {
-    BRep_Builder bb;
-    TopoDS_Compound result;
-    bb.MakeCompound ( result );
+  if (!cache.contains(hash()))
+  {
+      BRep_Builder bb;
+      TopoDS_Compound result;
+      bb.MakeCompound ( result );
 
-    BOOST_FOREACH ( const CompoundFeatureMap::value_type& c, components_ ) {
+      BOOST_FOREACH ( const CompoundFeatureMap::value_type& c, components_ )
+      {
+          std::string name=c.first;
+          FeaturePtr p=c.second;
+
+          bb.Add ( result, *p );
+          p->unsetLeaf();
+
+          providedSubshapes_[c.first]=c.second;
+      }
+
+      setShape ( result );
+
+      BOOST_FOREACH ( const CompoundFeatureMap::value_type& c, components_ )
+      {
         std::string name=c.first;
         FeaturePtr p=c.second;
 
-        bb.Add ( result, *p );
-        p->unsetLeaf();
-//     copyDatums(*p, name+"_");
+        FeatureSetParserArgList args;
+        args.push_back(FeatureSetPtr(new FeatureSet(p, Face)));
 
-        providedSubshapes_[c.first]=c.second;
+        FeatureSetPtr f(new FeatureSet(shared_from_this(), Face, "isIdentical(%0)", args));
+        providedFeatureSets_[name] = f;
+
+        std::cout<<"added: "<<name<<(*f)<<std::endl;
+      }
     }
-    setShape ( result );
+    else
+    {
+        this->operator=(*cache.markAsUsed<Compound>(hash()));
+    }
 }
 
 

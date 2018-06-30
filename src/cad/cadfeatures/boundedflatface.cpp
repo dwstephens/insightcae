@@ -21,6 +21,10 @@
 
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+
+
+#include "BRepOffsetAPI_MakeFilling.hxx"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -38,6 +42,13 @@ defineType(BoundedFlatFace);
 addToFactoryTable(Feature, BoundedFlatFace);
 
 
+size_t BoundedFlatFace::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=edges_;
+  return h.getHash();
+}
 
 
 BoundedFlatFace::BoundedFlatFace()
@@ -79,6 +90,7 @@ void BoundedFlatFace::build()
 {
     ShapeFix_Face FixShape;
 
+    TopTools_ListOfShape edgs;
     if
     (
         const std::vector<FeaturePtr>* edgesPtr
@@ -86,8 +98,6 @@ void BoundedFlatFace::build()
     )
     {
         const std::vector<FeaturePtr>& edges=*edgesPtr;
-
-        TopTools_ListOfShape edgs;
 
         int n_ok=0, n_nok=0;
         BOOST_FOREACH(const FeaturePtr& m, edges)
@@ -116,14 +126,6 @@ void BoundedFlatFace::build()
         if (n_nok>0)
             insight::Warning(str(format("Only %d out of %d given edges were valid!") % n_ok % (n_ok+n_nok)));
 
-        BRepBuilderAPI_MakeWire w;
-        w.Add(edgs);
-
-        BRepBuilderAPI_MakeFace fb(w.Wire(), true);
-        if (!fb.IsDone())
-            throw insight::Exception("Failed to generate planar face!");
-
-        FixShape.Init(fb.Face());
     }
     else if
     (
@@ -133,29 +135,60 @@ void BoundedFlatFace::build()
     {
         const std::vector<FeatureSetPtr>& edges=*edgesPtr;
 
-        TopTools_ListOfShape edgs;
         BOOST_FOREACH(const FeatureSetPtr& m, edges)
         {
             BOOST_FOREACH(const FeatureID& fi, m->data())
             {
-                edgs.Append(m->model()->edge(fi));
+                TopoDS_Edge e=m->model()->edge(fi);
+                edgs.Append(e);
             }
         }
-
-        BRepBuilderAPI_MakeWire w;
-        w.Add(edgs);
-
-        BRepBuilderAPI_MakeFace fb(w.Wire(), true);
-        if (!fb.IsDone())
-            throw insight::Exception("Failed to generate planar face!");
-
-        FixShape.Init(fb.Face());
     }
+
+    BRepBuilderAPI_MakeWire w;
+    w.Add(edgs);
+
+    BRepBuilderAPI_MakeFace fb1(w.Wire());
+    TopoDS_Face res;
+    if (!fb1.IsDone())
+    {
+     BRepOffsetAPI_MakeFilling fsb;
+     for (TopExp_Explorer ex(w, TopAbs_EDGE); ex.More(); ex.Next())
+     {
+      fsb.Add(TopoDS::Edge(ex.Current()), GeomAbs_C0);
+     }
+     fsb.Build();
+
+     FixShape.Init(TopoDS::Face(fsb.Shape()));
+     FixShape.FixOrientation();
+     FixShape.FixIntersectingWires();
+     FixShape.FixWiresTwoCoincEdges();
+ #if ((OCC_VERSION_MAJOR<7)&&(OCC_VERSION_MINOR<9))
+     FixShape.FixSmallAreaWire();
+ #endif
+     FixShape.FixMissingSeam();
+     FixShape.FixAddNaturalBound();
+     FixShape.FixPeriodicDegenerated();
+     FixShape.Perform();
+     TopoDS_Face f=FixShape.Face();
+
+     BRepBuilderAPI_MakeFace fb2(BRep_Tool::Surface(f), w.Wire());
+     if (!fb2.IsDone())
+        throw insight::Exception("Failed to generate planar face!");
+     else
+       res=fb2.Face();
+    }
+    else
+    {
+      res=fb1.Face();
+    }
+
+    FixShape.Init(res);
 
     FixShape.FixOrientation();
     FixShape.FixIntersectingWires();
     FixShape.FixWiresTwoCoincEdges();
-#if OCC_VERSION_MINOR<9
+#if ((OCC_VERSION_MAJOR<7)&&(OCC_VERSION_MINOR<9))
     FixShape.FixSmallAreaWire();
 #endif
     FixShape.FixMissingSeam();

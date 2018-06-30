@@ -20,6 +20,8 @@
 #include "importsolidmodel.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -37,9 +39,18 @@ defineType(Import);
 addToFactoryTable(Feature, Import);
 
 
+size_t Import::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=filepath_;
+  return h.getHash();
+}
 
 
-Import::Import(): Feature()
+
+Import::Import()
+: Feature()
 {}
 
 
@@ -49,9 +60,6 @@ Import::Import(const filesystem::path& filepath/*, ScalarPtr scale*/)
 : filepath_(filepath)/*,
   scale_(scale)*/
 {
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=filepath_;
 }
 
 
@@ -67,16 +75,28 @@ FeaturePtr Import::create ( const boost::filesystem::path& filepath/*, ScalarPtr
 
 void Import::build()
 {
-  boost::filesystem::path fp = filepath_;
-  if (!boost::filesystem::exists(fp))
+  ExecTimer t("Import::build() ["+featureSymbolName()+"]");
+
+  if (!cache.contains(hash()))
   {
-    fp=sharedModelFilePath(filepath_.string());
+    boost::filesystem::path fp = filepath_;
     if (!boost::filesystem::exists(fp))
     {
-      throw insight::Exception("File not found: "+filepath_.string());
+      fp=sharedModelFilePath(filepath_.string());
+      if (!boost::filesystem::exists(fp))
+      {
+        throw insight::Exception("File not found: "+filepath_.string());
+      }
     }
+    loadShapeFromFile(fp);
+
+    cache.insert(shared_from_this());
   }
-  loadShapeFromFile(fp);
+  else
+  {
+      this->operator=(*cache.markAsUsed<Import>(hash()));
+  }
+
 //   if (scale_)
 //   {
 //     gp_Trsf tr0;

@@ -69,6 +69,9 @@ class Hydrostatics
    */
   arma::mat M_;
   
+  virtual size_t calcHash() const;
+  virtual void build();
+
 public:
   Hydrostatics
   (
@@ -80,9 +83,8 @@ public:
     VectorPtr evert
   );
   
-  virtual Handle_AIS_InteractiveObject createAISRepr(const Handle_AIS_InteractiveContext& context) const;
+  virtual Handle_AIS_InteractiveObject createAISRepr() const;
   virtual void write(std::ostream& ) const;
-  virtual void build();
 };
 
 }

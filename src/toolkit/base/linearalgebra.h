@@ -164,7 +164,7 @@ public:
 
 double nonlinearSolve1D(const Objective1D& model, double x_min, double x_max);
 double nonlinearMinimize1D(const Objective1D& model, double x_min, double x_max);
-arma::mat nonlinearMinimizeND(const ObjectiveND& model, const arma::mat& x0, double tol=1e-3);
+arma::mat nonlinearMinimizeND(const ObjectiveND& model, const arma::mat& x0, double tol=1e-3, const arma::mat& steps = arma::mat());
 
 arma::mat movingAverage(const arma::mat& timeProfs, double fraction=0.5, bool first_col_is_time=true, bool centerwindow=false);
 
@@ -177,7 +177,15 @@ arma::mat sortedByCol(const arma::mat&m, int c);
  */
 class Interpolator
 {
-  arma::mat xy_, first, last;
+public:
+  typedef enum {
+    IP_INBOUND,
+    IP_OUTBOUND_LARGE,
+    IP_OUTBOUND_SMALL
+  } OutOfBounds;
+
+private:
+  arma::mat xy_, first_, last_;
   boost::shared_ptr<gsl_interp_accel> acc;
   boost::ptr_vector<gsl_spline> spline ;
   
@@ -196,40 +204,44 @@ public:
   /**
    * returns a single y-value from column col
    */
-  double y(double x, int col=0) const;
+  double y(double x, int col=0, OutOfBounds* outOfBounds=NULL) const;
   /**
    * returns a single dy/dx-value from column col
    */
-  double dydx(double x, int col=0) const;
+  double dydx(double x, int col=0, OutOfBounds* outOfBounds=NULL) const;
   /**
    * interpolates all y values (row vector) at x
    */
-  arma::mat operator()(double x) const;
+  arma::mat operator()(double x, OutOfBounds* outOfBounds=NULL) const;
   /**
    * interpolates all y values (row vector) at x
    */
-  arma::mat dydxs(double x) const;
+  arma::mat dydxs(double x, OutOfBounds* outOfBounds=NULL) const;
   /**
    * interpolates all y values (row vector) 
    * at multiple locations given in x
    * returns only the y values, no x-values in the first column
    */
-  arma::mat operator()(const arma::mat& x) const;
+  arma::mat operator()(const arma::mat& x, OutOfBounds* outOfBounds=NULL) const;
   /**
    * computes all derivative values (row vector) 
    * at multiple locations given in x
    */
-  arma::mat dydxs(const arma::mat& x) const;
+  arma::mat dydxs(const arma::mat& x, OutOfBounds* outOfBounds=NULL) const;
 
   /**
    * interpolates all y values (row vector) 
    * at multiple locations given in x
    * and return matrix with x as first column
    */
-  arma::mat xy(const arma::mat& x) const;
+  arma::mat xy(const arma::mat& x, OutOfBounds* outOfBounds=NULL) const;
   
   inline const arma::mat& rawdata() const { return xy_; }
-  
+  inline const arma::mat& first() const { return first_; }
+  inline const arma::mat& last() const { return last_; }
+  inline double firstX() const { return first_(0); }
+  inline double lastX() const { return last_(0); }
+
   inline int ncol() const { return spline.size(); }
 };
 

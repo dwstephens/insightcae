@@ -21,6 +21,8 @@
 #ifndef OCC_INCLUDE
 #define OCC_INCLUDE
 
+#pragma GCC diagnostic ignored "-Wold-style-cast"
+
 #undef Status
 
 #include "Standard_Version.hxx"
@@ -207,7 +209,7 @@
 #include <AIS_RadiusDimension.hxx>
 #include <AIS_Shape.hxx>
 
-#include "GEOMAlgo_Splitter.hxx"
+//#include "GEOMAlgo_Splitter.hxx"
 
 #include <armadillo>
 

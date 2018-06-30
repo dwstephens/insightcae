@@ -272,6 +272,16 @@ isofCaseBuilderWindow::isofCaseBuilderWindow()
     casepath_ = boost::filesystem::current_path();
     
     onOFVersionChanged(ui->OFversion->currentText());
+
+    {
+      QList<int> s;
+      s << 5000 << 5000;
+      ui->splitter_2->setSizes(s);
+      ui->splitter_4->setSizes(s);
+    }
+
+    setWindowIcon(QIcon(":/logo_insight_cae.png"));
+    this->setWindowTitle("InsightCAE OpenFOAM Case Builder");
 }
 
 
@@ -351,6 +361,15 @@ void isofCaseBuilderWindow::createCase
     }
     
   // insert BCs
+  
+  if (!boost::filesystem::exists(ofc_->boundaryDictPath(casepath_)))
+  {
+      if (!skipBCs)
+        QMessageBox::warning(this, "Warning", "No boundary dictionary present: skipping BC creation!");
+
+      skipBCs=true;
+  }
+  
   insight::OFDictData::dict boundaryDict;
   if ( !skipBCs )
     {
@@ -466,7 +485,8 @@ void isofCaseBuilderWindow::done(int r)
                 QMessageBox::Ok
             )
             {
-                createCase(/*casepath_*/);
+                bool skipBCs = ui->skipBCswitch->isChecked();
+                createCase(skipBCs);
             }
             else
             {
@@ -497,6 +517,11 @@ void isofCaseBuilderWindow::onSave()
                  );
 
     if ( !fn.isEmpty() ) {
+
+        if (! (fn.endsWith(".iscb")||fn.endsWith(".ISCB")) )
+          {
+            fn+=".iscb";
+          }
         
         boost::filesystem::path file (fn.toStdString());
 
@@ -571,7 +596,6 @@ void isofCaseBuilderWindow::onSave()
 void isofCaseBuilderWindow::onLoad()
 {
     
-    ui->selected_elements->clear();
     
     QString fn = QFileDialog::getOpenFileName
                  (
@@ -582,9 +606,11 @@ void isofCaseBuilderWindow::onLoad()
                  );
 
     if ( !fn.isEmpty() ) {
-                
+
+
         boost::filesystem::path file (fn.toStdString());
 
+        ui->selected_elements->clear();
         loadFile(file);
     }
 }

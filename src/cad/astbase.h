@@ -20,10 +20,20 @@
 #ifndef INSIGHT_CAD_ASTBASE_H
 #define INSIGHT_CAD_ASTBASE_H
 
+#include <set>
+#include <thread>
+#include <mutex>
+
+
 namespace insight
 {
 namespace cad
 {
+
+
+class RebuildCancelException
+{
+};
 
 /**
  * implements update-on-request framework
@@ -32,28 +42,36 @@ class ASTBase
 {
   bool valid_;
   mutable bool building_;
+
   
+  static std::mutex cancel_mtx_;
+  static std::set<std::thread::id> cancel_requests_;
+
+protected:
+  void setValid();
+
+  mutable size_t hash_;
+  virtual size_t calcHash() const =0;
+  virtual void build() =0;
+
 public:
+  static void cancelRebuild(std::thread::id thread_id = std::this_thread::get_id());
+
   ASTBase();
+  ASTBase(const ASTBase& o);
   virtual ~ASTBase();
   
-  inline void setValid() 
-  { 
-    valid_=true; 
-  }
-  
-  inline bool valid() const 
-  { 
-    return valid_; 
-  }
+  bool valid() const;
+  bool building() const;
 
-  inline bool building() const 
-  { 
-    return building_; 
-  }
+  virtual void checkForBuildDuringAccess() const;
 
-  void checkForBuildDuringAccess() const;
-  virtual void build() =0;
+  /**
+   * @brief hash
+   * @return
+   * returns the hash, if it already computed. Triggers computation otherwise
+   */
+  size_t hash() const;
 
 };
 

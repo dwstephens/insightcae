@@ -29,6 +29,9 @@
 #include <cmath>
 #include <limits>
 
+#include "vtkSTLReader.h"
+#include "vtkSmartPointer.h"
+
 using namespace std;
 using namespace arma;
 using namespace boost;
@@ -330,6 +333,35 @@ void boxToCellOperator::addIntoDictionary(OFDictData::dict& setFieldDict) const
 setFieldOperator* boxToCellOperator::clone() const
 {
   return new boxToCellOperator(p_);
+}
+
+
+cellToCellOperator::cellToCellOperator(Parameters const& p )
+: setFieldOperator(p),
+  p_(p)
+{
+}
+
+void cellToCellOperator::addIntoDictionary(OFDictData::dict& setFieldDict) const
+{
+  OFDictData::dict opdict;
+  opdict["set"]=p_.cellSet();
+
+  OFDictData::list fve;
+  BOOST_FOREACH(const FieldValueSpec& fvs, p_.fieldValues())
+  {
+    //std::ostringstream line;
+    //line << fvs.get<0>() << " " << fvs.get<1>() ;
+    fve.push_back( fvs );
+  }
+  opdict["fieldValues"]=fve;
+  setFieldDict.getList("regions").push_back( "cellToCell" );
+  setFieldDict.getList("regions").push_back( opdict );
+}
+
+setFieldOperator* cellToCellOperator::clone() const
+{
+  return new cellToCellOperator(p_);
 }
 
 }
@@ -1425,7 +1457,8 @@ void runPvPython
 (
   const OpenFOAMCase& ofc, 
   const boost::filesystem::path& location,
-  const std::vector<std::string> pvpython_commands
+  const std::vector<std::string> pvpython_commands,
+  bool keepScript
 )
 {
   boost::mutex::scoped_lock lock(runPvPython_mtx);
@@ -1448,7 +1481,8 @@ void runPvPython
   }
   args.push_back(tempfile.c_str());
   ofc.executeCommand(location, "pvbatch", args, NULL, 0, &machine);
-  remove(tempfile);
+
+  if (!keepScript) remove(tempfile);
 
 }
 
@@ -1461,6 +1495,16 @@ defineDynamicClass(PVScene);
 
 PVScene::~PVScene()
 {}
+
+std::string PVScene::pvec(const arma::mat& v)
+{
+  return boost::str( boost::format("[%g, %g, %g]") % v(0) % v(1) % v(2) );
+}
+
+std::vector<boost::filesystem::path> PVScene::createdFiles() const
+{
+  return std::vector<boost::filesystem::path>();
+}
 
 defineType(CustomPVScene);
 addToFactoryTable(PVScene, CustomPVScene);
@@ -1476,19 +1520,88 @@ string CustomPVScene::pythonCommands() const
   return p_.command;
 }
 
-defineType(CutplanePVScene);
-addToFactoryTable(PVScene, CutplanePVScene);
-addToStaticFunctionTable(PVScene, CutplanePVScene, defaultParameters);
+defineType(Cutplane);
+addToFactoryTable(PVScene, Cutplane);
+addToStaticFunctionTable(PVScene, Cutplane, defaultParameters);
 
-CutplanePVScene::CutplanePVScene(const ParameterSet& ps)
+Cutplane::Cutplane(const ParameterSet& ps)
 : p_(ps)
 {}
 
 
-string CutplanePVScene::pythonCommands() const
+string Cutplane::pythonCommands() const
 {
   return "";
 }
+
+defineType(IsoView);
+addToFactoryTable(PVScene, IsoView);
+addToStaticFunctionTable(PVScene, IsoView, defaultParameters);
+
+IsoView::IsoView(const ParameterSet& ps)
+: p_(ps)
+{}
+
+
+string IsoView::pythonCommands() const
+{
+  arma::mat bbL = p_.bbmax - p_.bbmin;
+  arma::mat ctr = p_.bbmin + 0.5*bbL;
+  arma::mat ex, ey, ez;
+  ex=ey=ez=vec3(0,0,0);
+
+  arma::uvec indices = arma::sort_index(bbL, "descend");
+  ex(indices(0))=1.0;
+  ez(indices(2))=1.0;
+  ey=arma::cross(ez, ex);
+  arma::mat L = bbL(indices);
+
+  return
+      "setCam("
+        + pvec(ctr+ex*L[0]*1.5) + ", "
+        + pvec(ctr) + ", "
+        + pvec(ez) + ", "
+        + str(format("%g") % (0.5*std::max(L[1],L[2]))) + (L[1]>L[2]?", scaleIsHorizontal=True":"")
+      +")\n"
+      "WriteImage('"+p_.filename.filename().stem().string()+"_front"+p_.filename.extension().string()+"')\n"
+      +
+      "setCam("
+        + pvec(ctr+ez*L[2]*1.5) + ", "
+        + pvec(ctr) + ", "
+        + pvec(-ey) + ", "
+      + str(format("%g") % (0.5*std::max(L[1],L[0]))) + (L[0]>L[2]?", scaleIsHorizontal=True":"")
+      +")\n"
+      "WriteImage('"+p_.filename.filename().stem().string()+"_top"+p_.filename.extension().string()+"')\n"
+      +
+      "setCam("
+        + pvec(ctr+ey*L[1]*1.5) + ", "
+        + pvec(ctr) + ", "
+        + pvec(ez) + ", "
+      + str(format("%g") % (0.5*std::max(L[0],L[2]))) + (L[0]>L[2]?", scaleIsHorizontal=True":"")
+      +")\n"
+      "WriteImage('"+p_.filename.filename().stem().string()+"_side"+p_.filename.extension().string()+"')\n"
+      +
+      "setCam("
+        + pvec(ctr+ex*L[0]*1.5+ey*L[1]*1.5+ez*L[2]*1.5) + ", "
+        + pvec(ctr) + ", "
+        + pvec(ez) + ", "
+      + str(format("%g") % (0.5*L[0])) + ", scaleIsHorizontal=True"
+      +")\n"
+      "WriteImage('"+p_.filename.filename().stem().string()+"_diag"+p_.filename.extension().string()+"')\n"
+  ;
+}
+
+std::vector<boost::filesystem::path> IsoView::createdFiles() const
+{
+  return list_of<boost::filesystem::path>
+      ( p_.filename.filename().stem().string()+"_front"+p_.filename.extension().string() )
+      ( p_.filename.filename().stem().string()+"_top"+p_.filename.extension().string() )
+      ( p_.filename.filename().stem().string()+"_side"+p_.filename.extension().string() )
+      ( p_.filename.filename().stem().string()+"_diag"+p_.filename.extension().string() )
+      ;
+}
+
+
 
 
 addToAnalysisFactoryTable(ParaviewVisualization);
@@ -1503,8 +1616,11 @@ ParameterSet ParaviewVisualization::defaultParameters()
   return Parameters::makeDefault();
 }
 
-ResultSetPtr ParaviewVisualization::operator()(ProgressDisplayer* displayer)
+ResultSetPtr ParaviewVisualization::operator()(ProgressDisplayer*)
 {
+//  boost::mutex::scoped_lock lock(runPvPython_mtx);
+    setupExecutionEnvironment();
+
     Parameters p(parameters_);
     
     std::string pvscript=
@@ -1512,16 +1628,87 @@ ResultSetPtr ParaviewVisualization::operator()(ProgressDisplayer* displayer)
      "prepareSnapshots()\n"
     ;
     
-//    BOOST_FOREACH(const PVScene& scn, p.scenes)
-//    {
-//        pvscript += scn.pythonCommands();
-//    }
+    BOOST_FOREACH(PVScenePtr scn, p.scenes)
+    {
+        pvscript += scn->pythonCommands();
+    }
+
+
+    redi::opstream proc;
+    std::vector<string> args;
+    args.push_back("--use-offscreen-rendering");
+    std::string machine=""; // execute always on local machine
+    //ofc.forkCommand(proc, location, "pvpython", args);
+
+    path tempfile=absolute(unique_path("%%%%%%%%%.py"));
+    {
+      std::ofstream tf(tempfile.c_str());
+      tf << "from Insight.Paraview import *\n";
+      tf << pvscript;
+      tf.close();
+    }
+    args.push_back(tempfile.c_str());
+    if (OFEs::list.size()==0)
+      throw insight::Exception("no OpenFOAM environment defined!");
+
+    OpenFOAMCase ofc( *OFEs::list.begin()->second );
+    ofc.executeCommand(executionPath(), "pvbatch", args, NULL, 0, &machine);
+
+//    if (!keepScript)
+      remove(tempfile);
+
+    ResultSetPtr results(new ResultSet(parameters_, "Paraview renderings", ""));
+
+    std::vector<boost::filesystem::path> files;
+    BOOST_FOREACH(PVScenePtr scn, p.scenes)
+    {
+        std::vector<boost::filesystem::path> af=scn->createdFiles();
+        std::copy(af.begin(), af.end(), std::back_inserter(files));
+    }
+
+    BOOST_FOREACH(boost::filesystem::path f, files)
+    {
+      results->insert(f.filename().stem().string(),
+        std::auto_ptr<Image>(new Image
+        (
+        executionPath(), f,
+        f.filename().stem().string(), ""
+      )));
+    }
+
+    return results;
 }
 
   
 }
 
-arma::mat patchIntegrate
+
+
+
+arma::mat matchValue(const std::string& vs)
+{
+  boost::regex re_vector ("^\\(([^ ]+) ([^ ]+) ([^ ]+)\\)$");
+  try {
+     arma::mat d;
+     d << lexical_cast<double> ( vs ) ;
+     return d;
+  }
+  catch (...)
+  {
+    boost::match_results<std::string::const_iterator> w;
+    if (!boost::regex_match ( vs, w, re_vector))
+      throw insight::Exception("reported value of patch integral was neither scalar nor vector!");
+    std::cout<<"["<<w[1]<<","<<w[2]<<","<<w[3]<<"]"<<std::endl;
+    arma::mat d;
+    d << lexical_cast<double> ( w[1] )
+      << lexical_cast<double> ( w[2] )
+      << lexical_cast<double> ( w[3] );
+    return d;
+  }
+  return arma::mat();
+}
+
+patchIntegrate::patchIntegrate
 (
   const OpenFOAMCase& cm, 
   const boost::filesystem::path& location,
@@ -1546,6 +1733,7 @@ arma::mat patchIntegrate
       }
   }
 
+  int ncomp=1;
   arma::mat result;
   BOOST_FOREACH ( const std::string& patchName, patches )
   {
@@ -1576,38 +1764,44 @@ arma::mat patchIntegrate
         re_area ( "^ *Area magnitude of patch (.+)\\[(.+)\\] = (.+)$" ),
         re_area4 ( "^ *total area   = (.+)$" )
         ;
+
     
     boost::match_results<std::string::const_iterator> what;
     double time=0;
-    std::vector<double> times, data, areadata;
+    std::vector<double> times, areadata;
+    std::vector<arma::mat> data;
     BOOST_FOREACH ( const std::string& line, output )
     {
       if ( boost::regex_match ( line, what, re_time ) )
         {
-//           cout<< what[1]<<endl;
+           cout<< what[1]<<endl;
           time=lexical_cast<double> ( what[1] );
           times.push_back ( time );
+          if ( times.size()-areadata.size()>1 ) // area may be reported not for every time step
+            {
+              areadata.push_back(areadata.back());
+            }
         }
 
       if ( boost::regex_match ( line, what, re_mag_int ) )
         {
-//           cout<<what[1]<<" : "<<what[4]<<endl;
-          data.push_back ( lexical_cast<double> ( what[4] ) );
+           cout<<what[1]<<" : "<<what[4]<<endl;
+           data.push_back(matchValue(what[4]));
         }
       if ( boost::regex_match ( line, what, re_mag_int4 ) )
         {
           cout<<what[1]<<" : "<<what[3]<<endl;
-          data.push_back ( lexical_cast<double> ( what[3] ) );
+          data.push_back(matchValue(what[3]));
         }
       else if ( boost::regex_match ( line, what, re_mag_sum ) )
         {
-//           cout<<what[1]<<" : "<<what[4]<<endl;
-          data.push_back ( lexical_cast<double> ( what[4] ) );
+           cout<<what[1]<<" : "<<what[4]<<endl;
+           data.push_back(matchValue(what[4]));
         }
 
       if ( boost::regex_match ( line, what, re_area ) )
         {
-//           cout<<what[1]<<" : "<<what[3]<<endl;
+           cout<<what[1]<<" : "<<what[3]<<endl;
           areadata.push_back ( lexical_cast<double> ( what[3] ) );
         }
       if ( boost::regex_match ( line, what, re_area4 ) )
@@ -1616,30 +1810,85 @@ arma::mat patchIntegrate
           areadata.push_back ( lexical_cast<double> ( what[1] ) );
         }
     }
+    if ( times.size()-areadata.size()==1 ) // area may not have been reported not for every time step
+      {
+        areadata.push_back(areadata.back());
+      }
 
     if ( ( data.size() !=areadata.size() ) || ( data.size() !=times.size() ) )
-      throw insight::Exception ( "Inconsistent information returned by patchIntegrate: number of values not equal to number of areas and number of times." );
+      throw insight::Exception ( boost::str(boost::format(
+          "Inconsistent information returned by patchIntegrate: number of values (%d) not equal to number of areas (%d) and number of times (%d)."
+          ) % data.size() % areadata.size() % times.size() ) );
 
-    arma::mat res=zeros ( data.size(), 3 );
-    for ( int i=0; i<data.size(); i++ )
+    if (data.size()>0)
       {
-        res ( i,0 ) =times[i];
-        res ( i,1 ) =data[i];
-        res ( i,2 ) =areadata[i];
-      }
-      
-//     cout<<patchName<<endl<<res<<endl;
+        ncomp=data[0].n_cols;
+        arma::mat res=zeros ( data.size(), 2+ncomp );
+        for ( int i=0; i<data.size(); i++ )
+          {
+            res ( i,0 ) =times[i];
+            res ( i,1 ) =areadata[i];
 
-    if ( result.n_cols==0 && result.n_rows==0 )
-      result=res;
-    else
-      result+=res;
+            for (int j=0; j<ncomp; j++)
+              {
+                res ( i, j+2 ) =data[i](j);
+              }
+          }
+
+        if ( result.n_cols==0 && result.n_rows==0 )
+          result=res;
+        else
+          result+=res;
+      }
   }
 
-  return result;
+  if (result.n_cols>0)
+    {
+      t_ = result.col(0);
+      A_ = result.col(1);
+      integral_values_ = result.cols(2,2+ncomp-1);
+    }
 }
 
+size_t patchIntegrate::n() const
+{
+  return t_.n_rows;
+}
 
+patchArea::patchArea(const OpenFOAMCase& cm, const boost::filesystem::path& location,
+                    const std::string& patchName)
+{
+
+  std::vector<std::string> output;
+  cm.executeCommand ( location, "patchArea", list_of(patchName), &output );
+
+  boost::regex
+      re_total ( "^TOTAL A=(.+) normal=\\((.+) (.+) (.+)\\) ctr=\\((.+) (.+) (.+)\\)$" )
+      ;
+
+
+  boost::match_results<std::string::const_iterator> what;
+  BOOST_FOREACH ( const std::string& line, output )
+  {
+    if ( boost::regex_match ( line, what, re_total ) )
+      {
+        A_=lexical_cast<double> ( what[1] );
+        n_=vec3(
+              lexical_cast<double> ( what[2] ),
+            lexical_cast<double> ( what[3] ),
+            lexical_cast<double> ( what[4] )
+            );
+        ctr_=vec3(
+              lexical_cast<double> ( what[5] ),
+            lexical_cast<double> ( what[6] ),
+            lexical_cast<double> ( what[7] )
+            );
+        return;
+      }
+  }
+
+  throw insight::Exception("patchArea: there was no interpretable output when searching for area and normal pf patch "+patchName+".");
+}
 
 
 arma::mat readParaviewCSV(const boost::filesystem::path& file, std::map<std::string, int>* headers)
@@ -2249,7 +2498,8 @@ void extrude2DMesh
   const std::string& sourcePatchName,
   std::string sourcePatchName2,
   bool wedgeInsteadOfPrism,
-  double distance
+  double distance,
+  const arma::mat& offsetTranslation
 )
 {  
   
@@ -2299,7 +2549,7 @@ void extrude2DMesh
   if (!wedgeInsteadOfPrism)
   {
     opt.clear();
-    opt=list_of<std::string>("-translate")(OFDictData::to_OF(vec3(0,0,0.5))).convert_to_container<std::vector<std::string> >();
+    opt=list_of<std::string>("-translate")(OFDictData::to_OF(offsetTranslation)).convert_to_container<std::vector<std::string> >();
     cm.executeCommand(location, "transformPoints", opt);
   }
   else
@@ -2334,12 +2584,20 @@ void rotateMesh
   extrDict["nLayers"]=nc;
   extrDict["expansionRatio"]=1.0;
 
-  extrDict["extrudeModel"]="wedge";
   OFDictData::dict wc;
   wc["axisPt"]=OFDictData::vector3(p0);
   wc["axis"]=OFDictData::vector3(axis);
   wc["angle"]=360.0;
-  extrDict["wedgeCoeffs"]=wc;
+  if (cm.OFversion()<400)
+  {
+    extrDict["extrudeModel"]="wedge";
+    extrDict["wedgeCoeffs"]=wc;
+  } 
+  else
+  {
+    extrDict["extrudeModel"]="sector";
+    extrDict["sectorCoeffs"]=wc;
+  }
 
 
   extrDict["mergeFaces"]=true;
@@ -2392,31 +2650,28 @@ void createBaffles
 
 arma::mat STLBndBox
 (
-  const OFEnvironment& ofe,
   const boost::filesystem::path& path
 )
 {
-  std::vector<std::string> output;
-  OpenFOAMCase(ofe).executeCommand(path.parent_path(), "surfaceCheck", list_of(path.string()), &output);
-  
-  boost::regex re_bb("^Bounding Box : \\((.+) (.+) (.+)\\) \\((.+) (.+) (.+)\\)$");
-  boost::match_results<std::string::const_iterator> what;
-  
-  BOOST_FOREACH(const std::string& l, output)
-  {
-    if (boost::regex_match(l, what, re_bb))
-    {
-      return join_rows
-      (
-	vec3(lexical_cast<double>(what[1]), lexical_cast<double>(what[2]), lexical_cast<double>(what[3])),
-	vec3(lexical_cast<double>(what[4]), lexical_cast<double>(what[5]), lexical_cast<double>(what[6]))
-      );
-    }
-  }
-  
-  throw insight::Exception("No bounding box information found in output!");
-  return arma::mat();
+  if (!boost::filesystem::exists(path))
+    throw insight::Exception("file "+path.string()+" does not exist!");
+
+  vtkSmartPointer<vtkSTLReader> stl = vtkSmartPointer<vtkSTLReader>::New();
+  stl->SetFileName(path.c_str());
+  stl->Update();
+
+  double bb[6];
+  stl->GetOutput()->GetBounds(bb);
+
+  arma::mat bbm;
+  bbm
+    << bb[0] << bb[1] << arma::endr
+    << bb[2] << bb[3] << arma::endr
+    << bb[4] << bb[5] << arma::endr;
+
+  return bbm;
 }
+
 
 std::pair<arma::mat, arma::mat> zoneExtrema
 (
@@ -2971,5 +3226,36 @@ bool checkIfReconstructLatestTimestepNeeded
   }
   return false;
 }
+
+
+
+void exportEMesh(const std::vector<arma::mat>& points, const boost::filesystem::path& filename)
+{
+  std::ofstream f(filename.c_str());
+  f<<"FoamFile {"<<endl
+   <<" version     2.0;"<<endl
+   <<" format      ascii;"<<endl
+   <<" class       featureEdgeMesh;"<<endl
+   <<" location    \"\";"<<endl
+   <<" object      "<<filename.filename().string()<<";"<<endl
+   <<"}"<<endl;
+
+  f<<points.size()<<endl
+   <<"("<<endl;
+  BOOST_FOREACH(const arma::mat& p, points)
+  {
+    f<<OFDictData::to_OF(p)<<endl;
+  }
+  f<<")"<<endl;
+
+  f<<(points.size()-1)<<endl
+   <<"("<<endl;
+  for (size_t i=1; i<points.size(); i++)
+  {
+    f<<"("<<(i-1)<<" "<<i<<")"<<endl;
+  }
+  f<<")"<<endl;
+}
+
 
 }

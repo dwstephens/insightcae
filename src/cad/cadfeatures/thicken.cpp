@@ -20,6 +20,7 @@
 #include "thicken.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
 
 // #include "BRepOffsetAPI_MakeThickSolid.hxx"
 #include "BRepOffset_MakeOffset.hxx"
@@ -45,6 +46,17 @@ addToFactoryTable(Feature, Thicken);
 
 
 
+size_t Thicken::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*shell_;
+  h+=thickness_->value();
+  h+=tol_->value();
+  return h.getHash();
+}
+
+
 
 Thicken::Thicken(): Feature()
 {}
@@ -54,13 +66,7 @@ Thicken::Thicken(): Feature()
 
 Thicken::Thicken(FeaturePtr shell, ScalarPtr thickness, ScalarPtr tol)
 : shell_(shell), thickness_(thickness), tol_(tol)
-{
-    ParameterListHash h(this);
-    h+=this->type();
-    h+=*shell_;
-    h+=thickness_->value();
-    h+=tol_->value();
-}
+{}
 
 
 
@@ -75,16 +81,20 @@ FeaturePtr Thicken::create ( FeaturePtr shell, ScalarPtr thickness, ScalarPtr to
 
 void Thicken::build()
 {
+  ExecTimer t("Thicken::build() ["+featureSymbolName()+"]");
 
   TopTools_ListOfShape ClosingFaces;
   
   TopoDS_Shape s=*shell_;
-  BRepOffset_MakeOffset maker;
   
   double offs=thickness_->value();
+
+
+//  BRepOffsetAPI_MakeOffsetShape maker(*shell_, offs, Precision::Confusion());
+  BRepOffset_MakeOffset maker;
   maker.Initialize
   (
-      s, offs, 1e-4,
+      s, offs, Precision::Confusion(),
       BRepOffset_Skin, Standard_True, Standard_True, GeomAbs_Arc, Standard_True
   );
   for (TopExp_Explorer ex(s, TopAbs_FACE); ex.More(); ex.Next())
@@ -93,8 +103,8 @@ void Thicken::build()
   }
 //   BRepOffsetAPI_MakeThickSolid maker
 //   (
-//     *shell_, ClosingFaces, thickness_->value(), 
-//     Precision::Confusion(), 
+//     *shell_, ClosingFaces, thickness_->value(),
+//     Precision::Confusion(),
 //     BRepOffset_Skin,
 //     Standard_True,
 //     Standard_False,
@@ -104,7 +114,13 @@ void Thicken::build()
   maker.MakeThickSolid();
 //   maker.MakeOffsetShape();
   
-  setShape(maker.Shape());
+  TopoDS_Shape res=maker.Shape();
+  ShapeFix_Solid FixShape;
+
+  FixShape.Init(TopoDS::Solid(res));
+  FixShape.Perform();
+
+  setShape(FixShape.Solid());
 }
 
 

@@ -19,9 +19,9 @@
  */
 
 
-#include "openfoamanalysis.h"
-#include "openfoamtools.h"
 #include "openfoamcaseelements.h"
+#include "openfoamtools.h"
+#include "openfoamanalysis.h"
 
 #include "base/boost_include.h"
 
@@ -33,12 +33,25 @@ using namespace std;
 namespace insight
 {
 
-turbulenceModel* insertTurbulenceModel(OpenFOAMCase& cm, const std::string& name)
+turbulenceModel* insertTurbulenceModel(OpenFOAMCase& cm, const OpenFOAMAnalysis::Parameters& params)
 {
-  turbulenceModel* model = turbulenceModel::lookup(name, cm);
+  const OpenFOAMAnalysis::Parameters::fluid_type::turbulenceModel_type& tmp
+      = params.fluid.turbulenceModel;
+
+  turbulenceModel* model = turbulenceModel::lookup(tmp.selection, cm, tmp.parameters);
+
+  if (!model)
+    throw insight::Exception("Unrecognized RASModel selection: "+tmp.selection);
+
+  return cm.insert(model);
+}
+
+turbulenceModel* insertTurbulenceModel(OpenFOAMCase& cm, const SelectableSubsetParameter& ps)
+{
+  turbulenceModel* model = turbulenceModel::lookup(ps.selection(), cm, ps());
   
   if (!model) 
-    throw insight::Exception("Unrecognized RASModel selection: "+name);
+    throw insight::Exception("Unrecognized RASModel selection: "+ps.selection());
   
   return cm.insert(model);
 }
@@ -63,8 +76,8 @@ OpenFOAMAnalysis::OpenFOAMAnalysis
 ParameterSet OpenFOAMAnalysis::defaultParameters()
 {
   ParameterSet p(Parameters::makeDefault());
-  p.getSubset("fluid").get<SelectionParameter>("turbulenceModel").items()=turbulenceModel::factoryToC();
-  p.getSubset("fluid").get<SelectionParameter>("turbulenceModel").setSelection("kOmegaSST");
+//  p.getSubset("fluid").get<SelectionParameter>("turbulenceModel").items()=turbulenceModel::factoryToC();
+//  p.getSubset("fluid").get<SelectionParameter>("turbulenceModel").setSelection("kOmegaSST");
   return p;
 }
 
@@ -235,7 +248,7 @@ void OpenFOAMAnalysis::installConvergenceAnalysis(boost::shared_ptr<ConvergenceA
 void OpenFOAMAnalysis::runSolver(ProgressDisplayer* displayer, OpenFOAMCase& cm)
 {
   CombinedProgressDisplayer cpd(CombinedProgressDisplayer::OR), conv(CombinedProgressDisplayer::AND);
-  cpd.add(displayer);
+  if (displayer) cpd.add(displayer);
   cpd.add(&conv);
   
   BOOST_FOREACH(decltype(convergenceAnalysis_)::value_type& ca, convergenceAnalysis_)
@@ -352,7 +365,11 @@ void OpenFOAMAnalysis::createCaseOnDisk(OpenFOAMCase& runCase)
     createDictsInMemory(runCase, dicts);
     applyCustomOptions(runCase, dicts);
 
-    int np=readDecomposeParDict(executionPath());
+    int np=1;
+    if (boost::filesystem::exists(executionPath()/"system"/"decomposeParDict"))
+    {
+        np=readDecomposeParDict(executionPath());
+    }
     bool is_parallel = np>1;
     if (!runCase.outputTimesPresentOnDisk(dir, is_parallel) && !evaluateonly)
     {

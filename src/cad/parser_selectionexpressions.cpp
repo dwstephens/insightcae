@@ -82,9 +82,9 @@ void ISCADParser::createSelectionExpressions()
             |
             ( r_solidmodel_expression
               >> '?'
-              >> lit("vid") >> '=' >> r_scalarExpression
+              >> lit("vid") >> '=' >> '(' >> ( qi::int_ % ',' ) >> ')'
             )
-            [ _val = phx::construct<FeatureSetPtr>(phx::new_<FeatureSet>(qi::_1, insight::cad::Vertex, phx::bind(&insight::cad::Scalar::value, *qi::_2))) ]
+            [ _val = phx::construct<FeatureSetPtr>(phx::new_<FeatureSet>(qi::_1, insight::cad::Vertex, qi::_2)) ]
         )
         >>
         *(
@@ -112,6 +112,12 @@ void ISCADParser::createSelectionExpressions()
               >> ')'
             )
             [ _val = phx::construct<FeatureSetPtr>(phx::new_<FeatureSet>(qi::_1, insight::cad::Edge, qi::_2, qi::_3)) ]
+            |
+            ( r_solidmodel_expression
+              >> '?'
+              >> lit("eid") >> '=' >> '(' >> ( qi::int_ % ',' ) >> ')'
+            )
+            [ _val = phx::construct<FeatureSetPtr>(phx::new_<FeatureSet>(qi::_1, insight::cad::Edge, qi::_2)) ]
             |
             ( r_solidmodel_expression
               >> '?'
@@ -148,6 +154,12 @@ void ISCADParser::createSelectionExpressions()
               >> ')'
             )
             [ _val = phx::construct<FeatureSetPtr>(phx::new_<FeatureSet>(qi::_1, insight::cad::Face, qi::_2, qi::_3)) ]
+            |
+            ( r_solidmodel_expression
+              >> '?'
+              >> lit("fid") >> '=' >> '(' >> ( qi::int_ % ',' ) >> ')'
+            )
+            [ _val = phx::construct<FeatureSetPtr>(phx::new_<FeatureSet>(qi::_1, insight::cad::Face, qi::_2)) ]
             |
             ( r_solidmodel_expression
               >> '?'
@@ -190,9 +202,9 @@ void ISCADParser::createSelectionExpressions()
             |
             ( r_solidmodel_expression
               >> '?'
-              >> lit("sid") >> '=' >> r_scalarExpression
+              >> lit("sid") >> '=' >> '(' >> (qi::int_ % ',' ) >> ')'
             )
-            [ _val = phx::construct<FeatureSetPtr>(phx::new_<FeatureSet>(qi::_1, insight::cad::Solid, phx::bind(&insight::cad::Scalar::value, *qi::_2))) ]
+            [ _val = phx::construct<FeatureSetPtr>(phx::new_<FeatureSet>(qi::_1, insight::cad::Solid, qi::_2)) ]
         )
         >>
         *(

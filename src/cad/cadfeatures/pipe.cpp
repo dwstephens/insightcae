@@ -23,6 +23,8 @@
 
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -40,6 +42,18 @@ defineType(Pipe);
 addToFactoryTable(Feature, Pipe);
 
 
+size_t Pipe::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*spine_;
+  h+=*xsec_;
+  if (fixed_binormal_) h+=fixed_binormal_->value();
+  h+=orient_;
+  h+=reapprox_spine_;
+  return h.getHash();
+}
+
 
 
 Pipe::Pipe(): Feature()
@@ -50,15 +64,7 @@ Pipe::Pipe(): Feature()
 
 Pipe::Pipe(FeaturePtr spine, FeaturePtr xsec, VectorPtr fixed_binormal, bool orient, bool reapprox_spine)
     : spine_(spine), xsec_(xsec), orient_(orient), reapprox_spine_(reapprox_spine), fixed_binormal_(fixed_binormal)
-{
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=*spine_;
-  h+=*xsec_;
-  if (fixed_binormal_) h+=fixed_binormal_->value();
-  h+=orient_;
-  h+=reapprox_spine_;
-}
+{}
 
 
 
@@ -71,6 +77,8 @@ FeaturePtr Pipe::create(FeaturePtr spine, FeaturePtr xsec, VectorPtr fixed_binor
 
 void Pipe::build()
 {
+    ExecTimer t("Pipe::build() ["+featureSymbolName()+"]");
+
     TopoDS_Wire spinew;
     if (spine_->isSingleWire())
     {
@@ -136,6 +144,7 @@ void Pipe::build()
     TopoDS_Shape xsecs=BRepBuilderAPI_Transform(static_cast<TopoDS_Shape>(xsec), tr).Shape();
 
     BRepOffsetAPI_MakePipeShell p(spinew);
+    p.SetTransitionMode(BRepBuilderAPI_RightCorner);
     p.Add(xsecs);
     
     if (fixed_binormal_)

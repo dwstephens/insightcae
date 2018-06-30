@@ -32,6 +32,18 @@ namespace insight
 {
 namespace cad
 {
+
+size_t Hydrostatics::calcHash() const
+{
+  ParameterListHash h;
+  h+=*hullvolume_;
+  h+=*shipmodel_;
+  h+=psurf_->value();
+  h+=nsurf_->value();
+  h+=elong_->value();
+  h+=evert_->value();
+  return h.getHash();
+}
   
 Hydrostatics::Hydrostatics
 (
@@ -53,7 +65,7 @@ void Hydrostatics::build()
   elat_=arma::cross(nsurf_->value(), elong_->value());
   
   boost::shared_ptr<Cutaway> submerged_volume = boost::dynamic_pointer_cast<Cutaway,Feature>( Cutaway::create(hullvolume_, psurf_, nsurf_) );
-  submerged_volume->build();
+  submerged_volume->checkForBuildDuringAccess();
   V_=submerged_volume->modelVolume();
   cout<<"displacement V="<<V_<<endl;
   
@@ -96,7 +108,7 @@ void Hydrostatics::build()
   cout<<"GM="<<GM<<endl;
 }
 
-Handle_AIS_InteractiveObject Hydrostatics::createAISRepr(const Handle_AIS_InteractiveContext& context) const
+Handle_AIS_InteractiveObject Hydrostatics::createAISRepr() const
 {
   checkForBuildDuringAccess();
   

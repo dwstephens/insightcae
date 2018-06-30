@@ -20,6 +20,8 @@
 #include "place.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -36,6 +38,24 @@ namespace cad {
 defineType(Place);
 addToFactoryTable(Feature, Place);
 
+
+size_t Place::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*m_;
+  if (other_)
+    {
+      h+=*other_;
+    }
+  else
+    {
+      h+=p0_->value();
+      h+=ex_->value();
+      h+=ez_->value();
+    }
+  return h.getHash();
+}
 
 
 
@@ -60,26 +80,14 @@ Place::Place(FeaturePtr m, const gp_Ax2& cs)
 
 Place::Place(FeaturePtr m, VectorPtr p0, VectorPtr ex, VectorPtr ez)
 : DerivedFeature(m), m_(m), p0_(p0), ex_(ex), ez_(ez)
-{
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=*m_;
-  h+=p0_->value();
-  h+=ex_->value();
-  h+=ez_->value();
-}
+{}
 
 
 
 
 Place::Place(FeaturePtr m, FeaturePtr other)
 : DerivedFeature(m), m_(m), other_(other)
-{
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=*m_;
-  h+=*other_;
-}
+{}
 
 
 
@@ -102,6 +110,8 @@ FeaturePtr Place::create(FeaturePtr m, FeaturePtr other)
 
 void Place::build()
 {
+  ExecTimer t("Place::build() ["+featureSymbolName()+"]");
+
   if (!trsf_)
   {
       

@@ -104,6 +104,31 @@ public:
 
 
 
+class potentialFoamNumerics
+    : public FVNumerics
+{
+
+public:
+#include "numericscaseelements__potentialFoamNumerics__Parameters.h"
+
+/*
+PARAMETERSET>>> potentialFoamNumerics Parameters
+inherits FVNumerics::Parameters
+
+<<<PARAMETERSET
+*/
+
+protected:
+    Parameters p_;
+
+public:
+    declareType ( "potentialFoamNumerics" );
+    potentialFoamNumerics ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
+    virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
+    static ParameterSet defaultParameters();
+};
+
+
 /**
  * create a setDecomposeParDict
  * @poX,@poY,@poZ: define the preference of coordinate directions for decomposition 
@@ -297,6 +322,45 @@ public:
 
 
 
+class rhoSimpleFoamNumerics
+    : public FVNumerics
+{
+
+public:
+#include "numericscaseelements__rhoSimpleFoamNumerics__Parameters.h"
+
+/*
+PARAMETERSET>>> rhoSimpleFoamNumerics Parameters
+inherits FVNumerics::Parameters
+
+nNonOrthogonalCorrectors = int 0 "Number of non-orthogonal correctors"
+hasCyclics = bool false "Whether the model contains cyclic boundaries"
+pinternal = double 1e5 "Internal pressure field value"
+Tinternal = double 300 "Internal temperature field value"
+Uinternal = vector (0 0 0) "Internal velocity field value"
+
+rhoMin = double 0.01 "Lower clipping for density"
+rhoMax = double 100. "Upper clipping for density"
+transonic = bool true "Check for transsonic flow"
+
+setup = selection ( accurate stable ) accurate "Select accuratefor second order schemes. In case of stability problems revert to stable."
+
+<<<PARAMETERSET
+*/
+
+protected:
+    Parameters p_;
+
+public:
+    declareType ( "rhoSimpleFoamNumerics" );
+    rhoSimpleFoamNumerics ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
+    virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
+    static ParameterSet defaultParameters();
+};
+
+
+
+
 class potentialFreeSurfaceFoamNumerics
     : public FVNumerics
 {
@@ -432,6 +496,15 @@ inherits FVNumerics::Parameters
 
 implicitPressureCorrection = bool false "Whether to switch to implicit pressure correction"
 nOuterCorrectors = int 50 "Number of outer correctors"
+alphaSubCycles = int 4 "Number of alpha integration subcycles"
+
+cAlpha = double 0.25 "[-] Interface compression coefficient"
+icAlpha = double 0.1 "[-] Isotropic interface compression coefficient"
+
+maxCo = double 5 "Maximum courant number"
+maxAlphaCo = double 3 "Maximum courant number at interface"
+
+snGradLowQualityLimiterReduction = double 0.66 "Reduction of limiter coefficient on low quality faces"
 
 <<<PARAMETERSET
 */
@@ -462,7 +535,7 @@ public:
 
 
 
-OFDictData::dict stdMULESSolverSetup(double tol=1e-8, double reltol=0.0, bool LTS=false);
+OFDictData::dict stdMULESSolverSetup(double cAlpha, double icAlpha, double tol=1e-8, double reltol=0.0, bool LTS=false);
 
 
 
@@ -553,6 +626,74 @@ class reactingParcelFoamNumerics
 public:
     declareType ( "reactingParcelFoamNumerics" );
     reactingParcelFoamNumerics ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
+    virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
+    static ParameterSet defaultParameters();
+};
+
+
+class buoyantSimpleFoamNumerics
+    : public FVNumerics
+{
+
+public:
+#include "numericscaseelements__buoyantSimpleFoamNumerics__Parameters.h"
+
+/*
+PARAMETERSET>>> buoyantSimpleFoamNumerics Parameters
+inherits FVNumerics::Parameters
+
+checkResiduals = bool false "Enable solver stop on residual goal"
+nNonOrthogonalCorrectors = int 0 "Number of non-orthogonal correctors"
+hasCyclics = bool false "Whether the case contains cyclic boundary conditions"
+
+<<<PARAMETERSET
+*/
+
+protected:
+    Parameters p_;
+
+    void init();
+
+public:
+    declareType ( "buoyantSimpleFoamNumerics" );
+    buoyantSimpleFoamNumerics ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
+    virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
+    static ParameterSet defaultParameters();
+};
+
+
+
+
+class buoyantPimpleFoamNumerics
+    : public FVNumerics
+{
+
+public:
+#include "numericscaseelements__buoyantPimpleFoamNumerics__Parameters.h"
+
+/*
+PARAMETERSET>>> buoyantPimpleFoamNumerics Parameters
+inherits FVNumerics::Parameters
+
+nNonOrthogonalCorrectors = int 0 "Number of non-orthogonal correctors"
+nCorrectors = int 1 "Number of correctors"
+nOuterCorrectors = int 5 "Number of outer correctors"
+maxCo = double 5. "Maximum courant number"
+maxDeltaT = double 1.0 "Maximum time step size"
+
+hasCyclics = bool false "Whether the case contains cyclic boundary conditions"
+
+<<<PARAMETERSET
+*/
+
+protected:
+    Parameters p_;
+
+    void init();
+
+public:
+    declareType ( "buoyantPimpleFoamNumerics" );
+    buoyantPimpleFoamNumerics ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
     virtual void addIntoDictionaries ( OFdicts& dictionaries ) const;
     static ParameterSet defaultParameters();
 };

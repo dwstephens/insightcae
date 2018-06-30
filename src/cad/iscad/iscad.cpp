@@ -40,23 +40,19 @@
 
 #include <qthread.h>
 
-class I : public QThread
-{
-  QSplashScreen* sp_;
-  QWidget win_;
-public:
-  I ( QSplashScreen* sp, QWidget* win ) :sp_ ( sp ), win_ ( win ) {}
-
-  void run()
-  {
-    QThread::sleep ( 3 );
-    sp_->finish ( &win_ );
-  }
-};
-
+Q_DECLARE_METATYPE(insight::cad::ScalarPtr)
+Q_DECLARE_METATYPE(insight::cad::VectorPtr)
+Q_DECLARE_METATYPE(insight::cad::FeaturePtr)
+Q_DECLARE_METATYPE(insight::cad::DatumPtr)
+Q_DECLARE_METATYPE(insight::cad::PostprocActionPtr)
 
 int main ( int argc, char** argv )
 {
+  qRegisterMetaType<insight::cad::ScalarPtr>("insight::cad::ScalarPtr");
+  qRegisterMetaType<insight::cad::VectorPtr>("insight::cad::VectorPtr");
+  qRegisterMetaType<insight::cad::FeaturePtr>("insight::cad::FeaturePtr");
+  qRegisterMetaType<insight::cad::DatumPtr>("insight::cad::DatumPtr");
+  qRegisterMetaType<insight::cad::PostprocActionPtr>("insight::cad::PostprocActionPtr");
 
   namespace po = boost::program_options;
 
@@ -68,7 +64,7 @@ int main ( int argc, char** argv )
   ( "help,h", "produce help message" )
   ( "batch,b", "evaluate model from specified input file without starting GUI" )
   ( "nolog,l", "put debug output to console instead of log window" )
-  //       ( "skipbcs,s", "skip BC configuration during input file read and batch case creation" )
+  ( "nobgparse,g", "deactivate background parsing" )
   //       ("workdir,w", po::value<std::string>(), "execution directory")
   //       ("savecfg,c", po::value<std::string>(), "save final configuration (including command line overrides) to this file")
   //       ("bool,b", po::value<StringList>(), "boolean variable assignment")
@@ -125,6 +121,7 @@ int main ( int argc, char** argv )
           auto postprocActions=model->postprocActions();
           BOOST_FOREACH ( decltype ( postprocActions ) ::value_type const& v, postprocActions )
           {
+            cout << "Executing " << v.first << endl;
             v.second->execute();
           }
 
@@ -147,35 +144,39 @@ int main ( int argc, char** argv )
       QPixmap pixmap ( ":/resources/insight_cad_splash.png" );
       QSplashScreen splash ( pixmap, Qt::WindowStaysOnTopHint|Qt::SplashScreen );
       splash.show();
-      splash.showMessage ( /*propGeoVersion()+" - */"Wait..." );
+      splash.showMessage ( "Wait..." );
+      QElapsedTimer splashtime; splashtime.start();
 
       ISCADMainWindow window ( 0, 0, vm.count ( "nolog" ) );
+      
+      bool dobgparsing = (vm.count ( "nobgparse" ) == 0);
+      
       if ( vm.count ( "input-file" ) )
         {
           boost::filesystem::path filename ( vm["input-file"].as<std::string>() );
           if ( boost::filesystem::extension(filename) == ".iscad" )
           {
-            window.insertModel ( filename );
+            window.insertModel ( filename, dobgparsing );
           }
           else
           {
             std::string script = "model: import(\""+filename.string()+"\");\n";
-            window.insertModelScript ( script );
+            window.insertModelScript ( script, dobgparsing );
           }
         }
       else
       {
-          window.insertEmptyModel();
+          window.insertEmptyModel( dobgparsing );
       }
 
       window.show();
 
-      app.processEvents();//This is used to accept a click on the screen so that user can cancel the screen
+//      while (splashtime.elapsed() < 3e3)
+//        {
+//            app.processEvents(); //This is used to accept a click on the screen so that user can cancel the screen
+//        }
+      splash.finish(&window);
 
-      I w ( &splash, &window );
-      w.start(); // splash is shown for 5 seconds
-
-      //     splash.finish(&window);
       window.raise();
 
       return app.exec();

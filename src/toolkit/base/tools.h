@@ -25,6 +25,16 @@
 namespace insight
 {
   
+struct TemporaryCaseDir
+{
+  bool keep_;
+  boost::filesystem::path dir;
+
+  TemporaryCaseDir(bool keep=false, const std::string& prefix="");
+  ~TemporaryCaseDir();
+};
+
+
 class SharedPathList 
 : public std::vector<boost::filesystem::path>
 {
@@ -39,6 +49,13 @@ public:
   static SharedPathList searchPathList;
 };
 
+
+class ExecTimer
+: public boost::timer::auto_cpu_timer
+{
+public:
+    ExecTimer(const std::string& name);
+};
 
 }
 

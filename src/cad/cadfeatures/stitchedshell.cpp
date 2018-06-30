@@ -21,6 +21,8 @@
 #include "occinclude.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -35,22 +37,27 @@ namespace cad {
 defineType(StitchedShell);
 addToFactoryTable(Feature, StitchedShell);
 
+size_t StitchedShell::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*faces_;
+  h+=tol_->value();
+  return h.getHash();
+}
+
 StitchedShell::StitchedShell()
 : Feature()
-{
-}
+{}
 
 StitchedShell::StitchedShell(FeatureSetPtr faces, ScalarPtr tol)
 :faces_(faces), tol_(tol)
-{
-    ParameterListHash h(this);
-    h+=this->type();
-    h+=*faces_;
-    h+=tol_->value();
-}
+{}
 
 void StitchedShell::build()
 {
+  ExecTimer t("StitchedShell::build() ["+featureSymbolName()+"]");
+
   BRepBuilderAPI_Sewing sew(tol_->value());
   
 //   TopoDS_Compound aRes;

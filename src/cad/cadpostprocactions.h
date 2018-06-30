@@ -27,5 +27,6 @@
 #include "hydrostatics.h"
 #include "mesh.h"
 #include "solidproperties.h"
+#include "pointdistance.h"
 
 #endif

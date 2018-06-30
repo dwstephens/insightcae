@@ -106,12 +106,10 @@ namespace cad
   
 class ParameterListHash
 {
-  Feature* model_;
   size_t hash_;
   
 public:
   ParameterListHash();
-  ParameterListHash(Feature* m);
   
   template<class T>
   void addParameter(const T& p);
@@ -124,7 +122,7 @@ public:
   
   operator size_t ();
 
-  inline size_t getHash() const { return hash_; };
+  size_t getHash() const;
 };
 
 
@@ -172,6 +170,7 @@ public:
     int FindIndex (const TopoDS_Shape& K)  const;
     int getMaxIndex() const;
 };
+
  
 /**
  * Base class of all CAD modelling features
@@ -245,21 +244,32 @@ protected:
 
   size_t hash_;
   
+  /**
+   * symbol name of this feature in the defining model
+   */
+  std::string featureSymbolName_;
+  
   void updateVolProps() const;
   void setShape(const TopoDS_Shape& shape);
   
-  void setShapeHash();
+  /**
+   * @brief calcShapeHash
+   * @return
+   * computes the hash from the shape geometry.
+   */
+  size_t calcShapeHash() const;
   
   /**
-   * sets the hash from input parameters
+   * shall set the hash from input parameters
    * (not the shape)
    * has to be computed before build!
    */
-  virtual void calcHash();
+  virtual size_t calcHash() const;
   
   void loadShapeFromFile(const boost::filesystem::path& filepath);
   
- 
+  virtual void build();
+
 public:
   declareType("Feature");
   
@@ -275,8 +285,9 @@ public:
   
   inline bool isleaf() const { return isleaf_; }
   inline void unsetLeaf() const { isleaf_=false; }
-  
-  inline size_t hash() const { return hash_; }
+    
+  void setFeatureSymbolName( const std::string& name);
+  const std::string& featureSymbolName() const;
   
   virtual void setVisResolution( ScalarPtr r );
   virtual void setDensity(ScalarPtr rho);
@@ -287,7 +298,7 @@ public:
   
   virtual double mass(double density_ovr=-1., double aw_ovr=-1.) const;
   
-  virtual void build();
+  virtual void checkForBuildDuringAccess() const;
     
   inline const DatumPtrMap& providedDatums() const 
     { checkForBuildDuringAccess(); return providedDatums_; }
@@ -402,7 +413,7 @@ public:
       = std::vector<boost::fusion::vector2<std::string, FeatureSetPtr> >()
   ) const;
   
-  void exportSTL(const boost::filesystem::path& filename, double abstol) const;
+  void exportSTL(const boost::filesystem::path& filename, double abstol=5e-5, bool binary=true) const;
   static void exportEMesh(const boost::filesystem::path& filename, const FeatureSet& fs, double abstol=1e-3, double maxlen=1e10);
   
   operator const TopoDS_Shape& () const;
@@ -475,7 +486,7 @@ void ParameterListHash::addParameter(const T& p)
   boost::hash_combine(hash_, p);
   
   // update
-  if (model_) model_->hash_=hash_;
+//  if (model_) model_->hash_=hash_;
 }
 
 class SingleFaceFeature
@@ -522,6 +533,7 @@ public:
 class FeatureCache
 : public std::map<size_t, FeaturePtr>
 {
+
   std::set<size_t> usedDuringRebuild_;
   
 public:

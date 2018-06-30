@@ -38,6 +38,15 @@ defineType(Circle);
 addToFactoryTable(Feature, Circle);
 
 
+size_t Circle::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=p0_->value();
+  h+=n_->value();
+  h+=D_->value();
+  return h.getHash();
+}
 
 
 Circle::Circle()
@@ -49,12 +58,14 @@ Circle::Circle()
 
 void Circle::build()
 {
-  Handle_Geom_Curve c=GC_MakeCircle(to_Pnt(p0_->value()), to_Vec(n_->value()), 0.5*D_->value());
+  Handle_Geom_Circle c=GC_MakeCircle(to_Pnt(p0_->value()), to_Vec(n_->value()), 0.5*D_->value()).Value();
   
   refpoints_["p0"]=p0_->value();
   
+  BRepBuilderAPI_MakeEdge e(c);
   BRepBuilderAPI_MakeWire w;
-  w.Add(BRepBuilderAPI_MakeEdge(c));
+  w.Add(e.Edge());
+  providedSubshapes_["OuterWire"].reset(new Feature(e.Edge()));
   setShape(BRepBuilderAPI_MakeFace(w.Wire()));
 }
 
@@ -64,11 +75,6 @@ void Circle::build()
 Circle::Circle(VectorPtr p0, VectorPtr n, ScalarPtr D)
 : p0_(p0), n_(n), D_(D)
 {
-    ParameterListHash h(this);
-    h+=this->type();
-    h+=p0_->value();
-    h+=n_->value();
-    h+=D_->value();
 }
 
 

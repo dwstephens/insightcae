@@ -24,6 +24,15 @@ namespace insight
 {
 namespace cad 
 {
+
+size_t Export::calcHash() const
+{
+  ParameterListHash h;
+  if (model_) h+=*model_;
+  h+=filename_;
+#warning extend hash!
+  return h.getHash();
+}
   
 Export::Export
 (
@@ -36,14 +45,38 @@ Export::Export
   namedfeats_(namedfeats)
 {}
 
-Export::Export(FeaturePtr model, const boost::filesystem::path& filename, ScalarPtr STL_accuracy)
-: model_(model),
-  filename_(filename),
-  STL_accuracy_(STL_accuracy)
+
+void Export::build()
 {
+   model_->saveAs(filename_, namedfeats_);
 }
 
-Export::Export(FeatureSetPtr eMesh_featureSet, const boost::filesystem::path& filename, ScalarPtr eMesh_accuracy, ScalarPtr eMesh_maxlen)
+Handle_AIS_InteractiveObject Export::createAISRepr() const
+{
+  checkForBuildDuringAccess();
+  return Handle_AIS_InteractiveObject();
+}
+
+void Export::write(std::ostream& ) const
+{}
+
+
+
+
+
+size_t ExportEMesh::calcHash() const
+{
+  ParameterListHash h;
+  h+=filename_;
+  h+=*eMesh_featureSet_;
+  h+=eMesh_accuracy_->value();
+  h+=eMesh_accuracy_->value();
+  return h.getHash();
+}
+
+
+
+ExportEMesh::ExportEMesh(FeatureSetPtr eMesh_featureSet, const boost::filesystem::path& filename, ScalarPtr eMesh_accuracy, ScalarPtr eMesh_maxlen)
 : filename_(filename),
   eMesh_featureSet_(eMesh_featureSet),
   eMesh_accuracy_(eMesh_accuracy),
@@ -51,32 +84,76 @@ Export::Export(FeatureSetPtr eMesh_featureSet, const boost::filesystem::path& fi
 {
 }
 
-void Export::build()
+void ExportEMesh::build()
 {
-  if (STL_accuracy_)
-  {
-    model_->exportSTL(filename_, *STL_accuracy_);
-  }
-  else
-  {
-    if (eMesh_accuracy_)
-    {
-      eMesh_featureSet_->model()->exportEMesh(filename_, *eMesh_featureSet_, eMesh_accuracy_->value(), eMesh_maxlen_->value());
-    }
-    else
-    {
-      model_->saveAs(filename_, namedfeats_);
-    }
-  }
+  eMesh_featureSet_->model()->exportEMesh(filename_, *eMesh_featureSet_, eMesh_accuracy_->value(), eMesh_maxlen_->value());
 }
 
-Handle_AIS_InteractiveObject Export::createAISRepr(const Handle_AIS_InteractiveContext&) const
+Handle_AIS_InteractiveObject ExportEMesh::createAISRepr() const
 {
   checkForBuildDuringAccess();
   return Handle_AIS_InteractiveObject();
 }
 
-void Export::write(std::ostream& ) const
+void ExportEMesh::write(std::ostream& ) const
+{}
+
+
+
+
+
+
+size_t ExportSTL::calcHash() const
+{
+  ParameterListHash h;
+  h+=*model_;
+  h+=filename_;
+  if (STL_accuracy_) h+=STL_accuracy_->value();
+  h+=force_binary_;
+  return h.getHash();
+}
+
+
+
+ExportSTL::ExportSTL(FeaturePtr model, const boost::filesystem::path& filename, ScalarPtr STL_accuracy, bool force_binary)
+: model_(model),
+  filename_(filename),
+  STL_accuracy_(STL_accuracy),
+  force_binary_(force_binary)
+{
+}
+
+
+void ExportSTL::build()
+{
+
+  double abstol=5e-5;
+  if (STL_accuracy_)
+    {
+      abstol=*STL_accuracy_;
+    }
+
+  bool binary=false;
+  std::string ext=filename_.extension().string();
+  if (force_binary_)
+    {
+      binary=true;
+    }
+  else
+    {
+      if (ext==".stlb") binary=true;
+    }
+
+  model_->exportSTL(filename_, abstol, binary);
+}
+
+Handle_AIS_InteractiveObject ExportSTL::createAISRepr() const
+{
+  checkForBuildDuringAccess();
+  return Handle_AIS_InteractiveObject();
+}
+
+void ExportSTL::write(std::ostream& ) const
 {}
 
 

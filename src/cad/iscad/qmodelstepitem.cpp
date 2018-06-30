@@ -24,103 +24,32 @@
 
 
 
+Handle_AIS_InteractiveObject QFeatureItem::createAIS(AIS_InteractiveContext&)
+{
+  Handle_AIS_InteractiveObject ais( new AIS_Shape(*smp_) );
+
+  Handle_Standard_Transient owner_container(new PointerTransient(this));
+  ais->SetOwner(owner_container);
+
+  return ais;
+}
+
 
 
 QFeatureItem::QFeatureItem
 (
-  const std::string& name, 
+  const QString& name,
   insight::cad::FeaturePtr smp, 
-  QoccViewerContext* context, 
-  const ViewState& state, 
+  bool visible,
   QTreeWidgetItem* parent,
   bool is_component
 )
-: QDisplayableModelTreeItem(name, context, state, parent),
+: QDisplayableModelTreeItem(name, visible, is_component ? AIS_Shaded : AIS_WireFrame, parent),
+  smp_(smp),
   is_component_(is_component)
 {
-  setText(COL_NAME, name_);
-  setCheckState(COL_VIS, state_.visible ? Qt::Checked : Qt::Unchecked);
-  reset(smp);
 }
 
-
-// void QModelStepItem::run()
-// {
-//   rebuild();
-// }
-// 
-void QFeatureItem::reset(insight::cad::FeaturePtr smp)
-{
-  smp_=smp;
-  rebuild();
-}
-
-void QFeatureItem::rebuild()
-{
-  if (!ais_.IsNull()) context_->getContext()->Erase(ais_);
-  ais_=new AIS_Shape(*smp_);
-//     Handle_Standard_Transient owner_container(new SolidModelTransient(smp));
-  Handle_Standard_Transient owner_container(new PointerTransient(this));
-  ais_->SetOwner(owner_container);
-  context_->getContext()->SetMaterial( ais_, Graphic3d_NOM_SATIN, false );
-  updateDisplay();
-}
-
-void QFeatureItem::wireframe()
-{
-  state_.shading=0;
-  updateDisplay();
-}
-
-void QFeatureItem::shaded()
-{
-  state_.shading=1;
-  updateDisplay();
-}
-
-void QFeatureItem::onlyThisShaded()
-{
-//   qDebug()<<"all wireframe"<<endl;
-  
-  emit(setUniformDisplayMode(AIS_WireFrame));
-  shaded();
-}
-
-
-void QFeatureItem::hide()
-{
-  setCheckState(COL_VIS, Qt::Unchecked);
-  updateDisplay();
-}
-
-void QFeatureItem::show()
-{
-  setCheckState(COL_VIS, Qt::Checked);
-  updateDisplay();
-}
-
-
-void QFeatureItem::randomizeColor()
-{
-  state_.randomizeColor();
-  updateDisplay();
-}
-
-void QFeatureItem::updateDisplay()
-{
-  state_.visible = (checkState(COL_VIS)==Qt::Checked);
-  
-  if (state_.visible)
-  {
-    context_->getContext()->Display(ais_);
-    context_->getContext()->SetDisplayMode(ais_, state_.shading, Standard_True );
-    context_->getContext()->SetColor(ais_, Quantity_Color(state_.r, state_.g, state_.b, Quantity_TOC_RGB), Standard_True );
-  }
-  else
-  {
-    context_->getContext()->Erase(ais_);
-  }
-}
 
 void QFeatureItem::exportShape()
 {
@@ -133,47 +62,19 @@ void QFeatureItem::exportShape()
   if (!fn.isEmpty()) smp_->saveAs(qPrintable(fn));
 }
 
-void QFeatureItem::insertName()
-{
-  emit insertParserStatementAtCursor(name_);
-}
 
-void QFeatureItem::resetDisplay()
-{
-    if (is_component_)
-    {
-        show();
-    }
-    else
-    {
-        hide();
-    }
-}
 
 void QFeatureItem::showProperties()
 {
   emit addEvaluation
   (
-    "SolidProperties_"+name_.toStdString(), 
+    "SolidProperties_"+name_,
     insight::cad::PostprocActionPtr(new insight::cad::SolidProperties(smp_)),
     true
   );
 }
 
-void QFeatureItem::setResolution()
-{
-  bool ok;
-  double res=QInputDialog::getDouble(treeWidget(), "Set Resolution", "Resolution:", 0.001, 1e-7, 0.1, 7, &ok);
-  if (ok)
-  {
-    context_->getContext()->SetDeviationCoefficient(ais_, res);
-  }
-}
 
-void QFeatureItem::jump()
-{
-    emit(jump_to(name_));
-}
 
 void QFeatureItem::showContextMenu(const QPoint& gpos) // this is a slot
 {
@@ -181,7 +82,7 @@ void QFeatureItem::showContextMenu(const QPoint& gpos) // this is a slot
     QAction *a;
     
     a=new QAction(name_, &myMenu);
-    connect(a, SIGNAL(triggered()), this, SLOT(jump()));
+    connect(a, SIGNAL(triggered()), this, SLOT(jumpToName()));
     myMenu.addAction(a);
     
     myMenu.addSeparator();

@@ -61,6 +61,8 @@ class SolidProperties
    * max point of BB
    */
   arma::mat bb_pmax_;
+
+  virtual size_t calcHash() const;
   
 public:
   SolidProperties(FeaturePtr model);
@@ -68,7 +70,7 @@ public:
   virtual void build();
   
   virtual void write(std::ostream&) const;
-  virtual Handle_AIS_InteractiveObject createAISRepr(const Handle_AIS_InteractiveContext& context) const;
+  virtual Handle_AIS_InteractiveObject createAISRepr() const;
 };
 
 

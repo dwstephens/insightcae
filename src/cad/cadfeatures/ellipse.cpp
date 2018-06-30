@@ -63,9 +63,19 @@ defineType(Ellipse);
 addToFactoryTable(Feature, Ellipse);
 
 
+size_t Ellipse::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=p0_->value();
+  h+=axmaj_->value();
+  h+=axmin_->value();
+  return h.getHash();
+}
+
 
 Ellipse::Ellipse()
-: Feature()
+// : Feature()
 {
 }
 
@@ -79,16 +89,12 @@ void Ellipse::build()
 
   gp_Ax2 ecs ( to_Pnt ( *p0_ ), to_Vec ( arma::cross ( axmaj, axmin ) ), to_Vec ( axmaj ) );
   Handle_Geom_Ellipse crv=GC_MakeEllipse ( gp_Elips(ecs, arma::norm ( axmaj, 2 ), arma::norm ( axmin,2 )) );
-  setShape ( BRepBuilderAPI_MakeEdge ( crv ) );
   
-//   gp_Pnt p;
-//   gp_Vec v;
-//   crv->D1(crv->FirstParameter(), p, v);
-//   refpoints_["p0"]=vec3(p);
-//   refvectors_["et0"]=vec3(v);
-//   crv->D1(crv->LastParameter(), p, v);
-//   refpoints_["p1"]=vec3(p);
-//   refvectors_["et1"]=vec3(v);
+  BRepBuilderAPI_MakeEdge e(crv);
+  BRepBuilderAPI_MakeWire w;
+  w.Add(e.Edge());
+  providedSubshapes_["OuterWire"].reset(new Feature(e.Edge()));
+  setShape(BRepBuilderAPI_MakeFace(w.Wire()));
 }
 
 
@@ -97,11 +103,6 @@ void Ellipse::build()
 Ellipse::Ellipse(VectorPtr p0, VectorPtr axmaj, VectorPtr axmin)
 : p0_(p0), axmaj_(axmaj), axmin_(axmin)
 {
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=p0_->value();
-  h+=axmaj_->value();
-  h+=axmin_->value();
 }
 
 
@@ -150,25 +151,25 @@ FeatureCmdInfoList Ellipse::ruleDocumentation() const
 
 
 
-bool Ellipse::isSingleEdge() const
-{
-    return true;
-}
-
-
-
-bool Ellipse::isSingleCloseWire() const
-{
-  return false;
-}
-
-
-
-
-bool Ellipse::isSingleOpenWire() const
-{
-  return true;
-}
+// bool Ellipse::isSingleEdge() const
+// {
+//     return true;
+// }
+// 
+// 
+// 
+// bool Ellipse::isSingleCloseWire() const
+// {
+//   return false;
+// }
+// 
+// 
+// 
+// 
+// bool Ellipse::isSingleOpenWire() const
+// {
+//   return true;
+// }
 
 
 

@@ -39,20 +39,10 @@ namespace insight
 
 
 
-defineType(turbulenceModel);
-defineFactoryTable(turbulenceModel, LIST(OpenFOAMCase& ofc), LIST(ofc));
-
-turbulenceModel::turbulenceModel(OpenFOAMCase& c)
-: OpenFOAMCaseElement(c, "turbulenceModel")
-{
-}
-
-
-
 defineType(RASModel);
 
-RASModel::RASModel(OpenFOAMCase& c)
-: turbulenceModel(c)
+RASModel::RASModel(OpenFOAMCase& c, const ParameterSet& ps)
+: turbulenceModel(c, ps)
 {
 }
 
@@ -86,8 +76,8 @@ turbulenceModel::AccuracyRequirement RASModel::minAccuracyRequirement() const
 
 defineType(LESModel);
 
-LESModel::LESModel(OpenFOAMCase& c)
-: turbulenceModel(c)
+LESModel::LESModel(OpenFOAMCase& c, const ParameterSet& ps)
+: turbulenceModel(c, ps)
 {
 }
 
@@ -185,6 +175,65 @@ bool laminar_RASModel::addIntoFieldDictionary(const std::string&, const FieldInf
 {
   return false;
 }
+
+
+
+defineType(Smagorinsky_LESModel);
+addToFactoryTable(turbulenceModel, Smagorinsky_LESModel);
+
+addToOpenFOAMCaseElementFactoryTable(Smagorinsky_LESModel);
+
+void Smagorinsky_LESModel::addFields( OpenFOAMCase& c ) const
+{
+  c.addField("k", 	FieldInfo(scalarField, 	dimKinEnergy, 	list_of(1e-10), volField ) );
+  if (c.OFversion()>=300)
+    c.addField("nut", 	FieldInfo(scalarField, 	dimKinViscosity, 	list_of(1e-10), volField ) );
+  else
+    c.addField("nuSgs", 	FieldInfo(scalarField, 	dimKinViscosity, 	list_of(1e-10), volField ) );
+}
+  
+
+Smagorinsky_LESModel::Smagorinsky_LESModel(OpenFOAMCase& c, const ParameterSet& ps)
+: LESModel(c),
+  p_(ps)
+{
+//   addFields();
+}
+
+
+void Smagorinsky_LESModel::addIntoDictionaries(OFdicts& dictionaries) const
+{
+  LESModel::addIntoDictionaries(dictionaries);
+  
+  OFDictData::dict& LESProperties=modelPropsDict(dictionaries);
+  LESProperties["printCoeffs"]=true;
+
+  std::string modelname="Smagorinsky";
+ 
+  LESProperties["LESModel"]=modelname;
+  LESProperties["turbulence"]="true";
+  //LESProperties["delta"]="cubeRootVol";
+  LESProperties["delta"]="vanDriest";
+  
+  OFDictData::dict smc;
+  //smc["Ck"]=OFDictData::dimensionedData("Ck", dimless, p_.C);
+  smc["Ck"]=p_.C;
+  LESProperties[modelname+"Coeffs"]=smc;
+  
+  
+  OFDictData::dict crvc;
+  crvc["deltaCoeff"]=1.0;
+  LESProperties["cubeRootVolCoeffs"]=crvc;
+  
+  OFDictData::dict vdc;
+  vdc["deltaCoeff"]=1.0;
+  vdc["delta"]="cubeRootVol";
+  vdc["cubeRootVolCoeffs"]=crvc;
+  LESProperties["vanDriestCoeffs"]=vdc;
+  
+  LESProperties.addSubDictIfNonexistent("laminarCoeffs");
+}
+
 
 defineType(oneEqEddy_LESModel);
 addToFactoryTable(turbulenceModel, oneEqEddy_LESModel);
@@ -358,13 +407,13 @@ void kOmegaSST_RASModel::addFields( OpenFOAMCase& c ) const
   c.addField("omega", 	FieldInfo(scalarField, 	OFDictData::dimension(0, 0, -1), 	list_of(1.0), volField ) );
   if (c.isCompressible())
   {
-    c.addField("mut", 	FieldInfo(scalarField, 	dimDynViscosity, 	list_of(1e-10), volField ) );
     c.addField("alphat", 	FieldInfo(scalarField, 	dimDynViscosity, 	list_of(1e-10), volField ) );
   }
+
+  if (c.isCompressible() && (c.OFversion()<300))
+    c.addField("mut", 	FieldInfo(scalarField, 	dimDynViscosity, 	list_of(1e-10), volField ) );
   else
-  {
     c.addField("nut", 	FieldInfo(scalarField, 	dimKinViscosity, 	list_of(1e-10), volField ) );
-  }
 }
 
 kOmegaSST_RASModel::kOmegaSST_RASModel(OpenFOAMCase& c, const ParameterSet& ps)
@@ -387,22 +436,27 @@ void kOmegaSST_RASModel::addIntoDictionaries(OFdicts& dictionaries) const
 
 bool kOmegaSST_RASModel::addIntoFieldDictionary(const std::string& fieldname, const FieldInfo& fieldinfo, OFDictData::dict& BC, double roughness_z0) const
 {
-  std::string pref="";
-  if (OFcase().isCompressible()) pref="compressible::";
+  std::string turbpref="", pref="";
+  if (OFcase().isCompressible() )
+    {
+      pref="compressible::";
+      if (OFcase().OFversion()<300) turbpref="compressible::";
+    }
   
   if (fieldname == "k")
   {
-    BC["type"]=OFDictData::data(pref+"kqRWallFunction");
+    BC["type"]=OFDictData::data(turbpref+"kqRWallFunction");
     BC["value"]=OFDictData::data("uniform 1e-10");
     return true;
   }
   else if (fieldname == "omega")
   {
-    BC["type"]=OFDictData::data(pref+"omegaWallFunction");
+    BC["type"]=OFDictData::data(turbpref+"omegaWallFunction");
     BC["Cmu"]=0.09;
     BC["kappa"]=0.41;
     BC["E"]=9.8;
     BC["beta1"]=0.075;
+    BC["blended"]=true;
     BC["value"]="uniform 1";
     return true;
   }
@@ -412,7 +466,7 @@ bool kOmegaSST_RASModel::addIntoFieldDictionary(const std::string& fieldname, co
     {
       if (roughness_z0>0.)
       {
-          BC["type"]="nutURoughWallFunction";
+          BC["type"]=turbpref+"nutURoughWallFunction";
           double Cs=0.5;
           BC["roughnessConstant"]=Cs;
           BC["roughnessHeight"]=roughness_z0*9.793/Cs;
@@ -421,13 +475,13 @@ bool kOmegaSST_RASModel::addIntoFieldDictionary(const std::string& fieldname, co
       }
       else
       {
-        BC["type"]=OFDictData::data("nutUWallFunction");
+        BC["type"]=turbpref+"nutUWallFunction";
         BC["value"]=OFDictData::data("uniform 1e-10");
       }
     }
     else
     {
-      BC["type"]=OFDictData::data("nutWallFunction");
+      BC["type"]=turbpref+"nutWallFunction";
       BC["value"]=OFDictData::data("uniform 1e-10");
     }
     return true;
@@ -440,7 +494,7 @@ bool kOmegaSST_RASModel::addIntoFieldDictionary(const std::string& fieldname, co
   }
   else if (fieldname == "alphat")
   {
-    BC["type"]=OFDictData::data(pref+"alphatWallFunction");
+    BC["type"]=pref+"alphatWallFunction";
     BC["value"]=OFDictData::data("uniform 1e-10");
     return true;
   }
@@ -728,6 +782,7 @@ bool kOmegaSST_LowRe_RASModel::addIntoFieldDictionary(const std::string& fieldna
   else if ( fieldname == "omega")
   {
     BC["type"]=OFDictData::data("omegaWallFunction");
+    BC["blended"]=true;
     BC["value"]="uniform "+str(format("%g") % 1e-10);
     return true;
   }
@@ -949,6 +1004,7 @@ bool LRR_RASModel::addIntoFieldDictionary(const std::string& fieldname, const Fi
 
 defineType(WALE_LESModel);
 addToFactoryTable(turbulenceModel, WALE_LESModel);
+addToOpenFOAMCaseElementFactoryTable(WALE_LESModel);
 
 void WALE_LESModel::addFields(OpenFOAMCase& c) const
 {
@@ -959,7 +1015,7 @@ void WALE_LESModel::addFields(OpenFOAMCase& c) const
     c.addField("nuSgs", 	FieldInfo(scalarField, 	dimKinViscosity, 	list_of(1e-10), volField ) );
 }
 
-WALE_LESModel::WALE_LESModel(OpenFOAMCase& c)
+WALE_LESModel::WALE_LESModel(OpenFOAMCase& c, const ParameterSet&)
 : LESModel(c)
 {
 //   addFields();
@@ -991,25 +1047,6 @@ void WALE_LESModel::addIntoDictionaries(OFdicts& dictionaries) const
 //   cd["filter"]="simple";
 }
 
-bool WALE_LESModel::addIntoFieldDictionary(const std::string& fieldname, const FieldInfo& fieldinfo, OFDictData::dict& BC, double roughness_z0) const
-{
-    if (roughness_z0>0.)
-        throw insight::Exception("WALE_LESModel: non-smooth walls are not supported!");
-    
-    if (fieldname == "k")
-  {
-    BC["type"]="fixedValue";
-    BC["value"]="uniform 1e-10";
-    return true;
-  }
-  else if ( (fieldname == "nuSgs") || (fieldname == "nut") )
-  {
-    BC["type"]="zeroGradient";
-    return true;
-  }
-  
-  return false;
-}
 
 
 }

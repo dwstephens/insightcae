@@ -166,12 +166,16 @@ class FeatureSet
   
   FeatureSetData data_;
 
+  virtual size_t calcHash() const;
+  virtual void build();
+
 public:
   FeatureSet(const FeatureSet& o);
   FeatureSet(ConstFeaturePtr m, EntityType shape);
 
   FeatureSet(ConstFeaturePtr m, EntityType shape, FeatureID id);
-  
+  FeatureSet(ConstFeaturePtr m, EntityType shape, const std::vector<FeatureID>& ids);
+
   /**
    * query an entire feature
    */
@@ -193,8 +197,6 @@ public:
     const FeatureSetParserArgList& refs = FeatureSetParserArgList() 
   );
   
-  virtual void build();
-  
   size_t size() const;
   
   void safe_union(const FeatureSet& o);
@@ -213,8 +215,7 @@ public:
   FeatureSetPtr clone() const;
   
   void write() const;
-  
-  size_t hash() const;
+
 };
 
 

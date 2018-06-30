@@ -20,6 +20,7 @@
 #include "booleansubtract.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
 
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
@@ -40,6 +41,14 @@ defineType(BooleanSubtract);
 addToFactoryTable(Feature, BooleanSubtract);
 
 
+size_t BooleanSubtract::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*m1_;
+  h+=*m2_;
+  return h.getHash();
+}
 
 
 BooleanSubtract::BooleanSubtract()
@@ -54,10 +63,7 @@ BooleanSubtract::BooleanSubtract(FeaturePtr m1, FeaturePtr m2)
   m1_(m1),
   m2_(m2)
 {
-  ParameterListHash h(this);
-  h+=this->type();
-  h+=*m1_;
-  h+=*m2_;
+  setFeatureSymbolName( "("+m1->featureSymbolName()+" - "+m2->featureSymbolName()+")" );
 }
 
 
@@ -73,10 +79,26 @@ FeaturePtr BooleanSubtract::create(FeaturePtr m1, FeaturePtr m2)
 
 void BooleanSubtract::build()
 {
-  
+  ExecTimer t("BooleanSubtract::build() ["+featureSymbolName()+"]");
+
   if (!cache.contains(hash()))
   {
-    TopoDS_Shape subs=BRepAlgoAPI_Cut(*m1_, *m2_).Shape();
+    if (!m1_) throw insight::cad::CADException(shared_from_this(), "Boolean subtract: invalid base shape" );
+    if (!m2_) throw insight::cad::CADException(shared_from_this(), "Boolean subtract: invalid tool shape" );
+
+    BRepAlgoAPI_Cut cutter(*m1_, *m2_);
+    cutter.Build();
+
+    if (!cutter.IsDone())
+    {
+        throw insight::cad::CADException
+        (
+            shared_from_this(),
+            "could not perform cut operation."
+        );
+    }
+
+    TopoDS_Shape subs=cutter.Shape();
     setShape(subs);
   
     copyDatums(*m1_);

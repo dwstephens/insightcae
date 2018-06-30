@@ -41,7 +41,7 @@
 
  
 
-void ISCADMainWindow::connectMenuToModel(ISCADModel* model)
+void ISCADMainWindow::connectMenuToModel(ISCADModelEditor* me, ISCADModelEditor* lme)
 {
     act_load_->disconnect();
     act_save_->disconnect();
@@ -61,36 +61,84 @@ void ISCADMainWindow::connectMenuToModel(ISCADModel* model)
     act_display_all_shaded_->disconnect();
     act_display_all_wire_->disconnect();
     act_reset_shading_->disconnect();
-    
-    disconnect(this, SLOT(onUpdateClipPlaneMenu()));
-    disconnect(this, SLOT(onLoadModelFile(const boost::filesystem::path&)));
-        
-    if (model)
+
+    act_measure_distance_->disconnect();
+    act_sel_pts_->disconnect();
+    act_sel_edgs_->disconnect();
+    act_sel_faces_->disconnect();
+
+    if (lme!=NULL)
+      {
+        disconnect(lme->model(), SIGNAL(modelUpdated(int)),
+                   this, SLOT(onUpdateClipPlaneMenu()));
+        disconnect(lme->model(), SIGNAL(openModel(const boost::filesystem::path&)),
+                   this, SLOT(onLoadModelFile(const boost::filesystem::path&)));
+      }
+
+    bgparsestopbtn_->disconnect(SIGNAL(clicked()));
+
+    if (me)
     {
-        connect(act_save_, SIGNAL(triggered()), model, SLOT(saveModel()));
-        connect(act_saveas_, SIGNAL(triggered()), model, SLOT(saveModelAs()));
-        connect(act_rebuild_, SIGNAL(triggered()), model, SLOT(rebuildModel()));
-        connect(act_rebuild_UTC_, SIGNAL(triggered()), model, SLOT(rebuildModelUpToCursor()));
-        connect(act_insert_section_comment_, SIGNAL(triggered()), model, SLOT(insertSectionCommentAtCursor()));
-        connect(act_insert_feat_, SIGNAL(triggered()), model, SLOT(insertFeatureAtCursor()));
-        connect(act_insert_component_name_, SIGNAL(triggered()), model, SLOT(insertComponentNameAtCursor()));
-        connect(act_clear_cache_, SIGNAL(triggered()), model, SLOT(clearCache()));
-        connect(act_fit_all_, SIGNAL(triggered()), model->viewer_, SLOT(fitAll()));
-        connect(act_toggle_grid_, SIGNAL(triggered()), model->context_, SLOT(toggleGrid()));
-        connect(act_toggle_clipxy_, SIGNAL(triggered()), model->viewer_, SLOT(toggleClipXY()));
-        connect(act_toggle_clipyz_, SIGNAL(triggered()), model->viewer_, SLOT(toggleClipYZ()));
-        connect(act_toggle_clipxz_, SIGNAL(triggered()), model->viewer_, SLOT(toggleClipXZ()));
-        connect(act_background_color_, SIGNAL(triggered()), model->viewer_, SLOT(background()));
-        connect(act_display_all_shaded_, SIGNAL(triggered()), model, SLOT(allShaded()));
-        connect(act_display_all_wire_, SIGNAL(triggered()), model, SLOT(allWireframe()));
-        connect(act_reset_shading_, SIGNAL(triggered()), model->modeltree_, SLOT(resetViz()));
+        connect(act_save_, SIGNAL(triggered()),
+                me->model(), SLOT(saveModel()));
+        connect(act_saveas_, SIGNAL(triggered()),
+                me->model(), SLOT(saveModelAs()));
+        connect(act_rebuild_, SIGNAL(triggered()),
+                me->model(), SLOT(rebuildModel()));
+        connect(act_rebuild_UTC_, SIGNAL(triggered()),
+                me->model(), SLOT(rebuildModelUpToCursor()));
+        connect(act_insert_section_comment_, SIGNAL(triggered()),
+                me->model(), SLOT(insertSectionCommentAtCursor()));
+        connect(act_insert_feat_, SIGNAL(triggered()),
+                me->model(), SLOT(insertFeatureAtCursor()));
+        connect(act_insert_component_name_, SIGNAL(triggered()),
+                me->model(), SLOT(insertComponentNameAtCursor()));
+        connect(act_clear_cache_, SIGNAL(triggered()),
+                me->model(), SLOT(clearCache()));
+
+        connect(act_fit_all_, SIGNAL(triggered()),
+                me->viewer(), SLOT(fitAll()));
+        connect(act_toggle_grid_, SIGNAL(triggered()),
+                me->viewer(), SLOT(toggleGrid()));
+        connect(act_toggle_clipxy_, SIGNAL(triggered()),
+                me->viewer(), SLOT(toggleClipXY()));
+        connect(act_toggle_clipyz_, SIGNAL(triggered()),
+                me->viewer(), SLOT(toggleClipYZ()));
+        connect(act_toggle_clipxz_, SIGNAL(triggered()),
+                me->viewer(), SLOT(toggleClipXZ()));
+        connect(act_background_color_, SIGNAL(triggered()),
+                me->viewer(), SLOT(background()));
+        connect(act_display_all_shaded_, SIGNAL(triggered()),
+                me->modeltree(), SLOT(allShaded()));
+        connect(act_display_all_wire_, SIGNAL(triggered()),
+                me->modeltree(), SLOT(allWireframe()));
+        connect(act_reset_shading_, SIGNAL(triggered()),
+                me->modeltree(), SLOT(resetViz()));
+
+        connect(act_measure_distance_, SIGNAL(triggered()),
+                me->viewer(), SLOT(onMeasureDistance()));
+
+        connect(act_sel_pts_, SIGNAL(triggered()),
+                me->viewer(), SLOT(onSelectPoints()));
+
+        connect(act_sel_edgs_, SIGNAL(triggered()),
+                me->viewer(), SLOT(onSelectEdges()));
+
+        connect(act_sel_faces_, SIGNAL(triggered()),
+                me->viewer(), SLOT(onSelectFaces()));
+
+        me->model()->populateClipPlaneMenu(clipplanemenu_, me->viewer());
+
+        connect(bgparsestopbtn_, SIGNAL(clicked()),
+                me->model(), SLOT(onCancelRebuild()));
+
+        connect(me->model(), SIGNAL(modelUpdated(int)),
+                this, SLOT(onUpdateClipPlaneMenu(int)));
         
-        model->populateClipPlaneMenu(clipplanemenu_);
-        connect(model, SIGNAL(updateClipPlaneMenu()), this, SLOT(onUpdateClipPlaneMenu()));
-        
-        connect(model, SIGNAL(openModel(const boost::filesystem::path&)), 
+        connect(me->model(), SIGNAL(openModel(const boost::filesystem::path&)),
                 this, SLOT(onLoadModelFile(const boost::filesystem::path&)));
-    }
+
+      }
 }
 
 
@@ -100,16 +148,20 @@ void ISCADMainWindow::loadModel()
     QString fn=QFileDialog::getOpenFileName(this, "Select file", "", "ISCAD Model Files (*.iscad)");
     if (fn!="")
     {
-        insertModel(qPrintable(fn))->unsetUnsavedState();
+        insertModel(qPrintable(fn))->model()->unsetUnsavedState();
     }
 }
 
 
 void ISCADMainWindow::activateModel(int tabindex)
 {
-    if (tabindex>=0)
+    if ( (tabindex>=0) && (tabindex!=lastTabIndex_) )
     {
-        connectMenuToModel(static_cast<ISCADModel*>(modelTabs_->widget(tabindex)));
+        ISCADModelEditor* lme=NULL;
+        if (lastTabIndex_>=0) lme=static_cast<ISCADModelEditor*>(modelTabs_->widget(lastTabIndex_));
+
+        connectMenuToModel(static_cast<ISCADModelEditor*>(modelTabs_->widget(tabindex)), lme);
+        lastTabIndex_=tabindex;
     }
 }
 
@@ -118,7 +170,7 @@ void ISCADMainWindow::activateModel(int tabindex)
 // }
 
 
-void ISCADMainWindow::onUpdateTabTitle(ISCADModel* model, const boost::filesystem::path& filepath, bool isUnSaved)
+void ISCADMainWindow::onUpdateTabTitle(ISCADModelEditor* model, const boost::filesystem::path& filepath, bool isUnSaved)
 {
     int i=modelTabs_->indexOf(model);
     if (i>=0)
@@ -140,13 +192,20 @@ void ISCADMainWindow::onCloseModel(int tabindex)
     }
 }
 
-void ISCADMainWindow::onUpdateClipPlaneMenu()
+void ISCADMainWindow::onUpdateClipPlaneMenu(int errorState)
 {
-    ISCADModel *model = static_cast<ISCADModel*>(modelTabs_->currentWidget());
-    if (model)
+  if (errorState==0)
     {
-        model->populateClipPlaneMenu(clipplanemenu_);
+      if (ISCADModelEditor *me = static_cast<ISCADModelEditor*>(modelTabs_->currentWidget()))
+      {
+          me->model()->populateClipPlaneMenu(clipplanemenu_, me->viewer());
+      }
     }
+}
+
+void ISCADMainWindow::onNewModel()
+{
+  insertEmptyModel();
 }
 
 void ISCADMainWindow::onLoadModelFile(const boost::filesystem::path& modelfile)
@@ -156,7 +215,8 @@ void ISCADMainWindow::onLoadModelFile(const boost::filesystem::path& modelfile)
 
 
 ISCADMainWindow::ISCADMainWindow(QWidget* parent, Qt::WindowFlags flags, bool nolog)
-: QMainWindow(parent, flags)
+: QMainWindow(parent, flags),
+  lastTabIndex_(-1)
 {
     
     setWindowIcon(QIcon(":/resources/logo_insight_cae.png"));
@@ -170,7 +230,9 @@ ISCADMainWindow::ISCADMainWindow(QWidget* parent, Qt::WindowFlags flags, bool no
     if (!nolog)
     {
       logger_=new Q_DebugStream(std::cout); // ceases to work with multithreaded bg parsing
-      connect(logger_, SIGNAL(appendText(const QString&)), log_, SLOT(append(const QString&)));
+      connect(logger_, SIGNAL(appendText(const QString&)),
+              log_, SLOT(append(const QString&)));
+
     }
     
     spl0->addWidget(log_);
@@ -200,13 +262,33 @@ ISCADMainWindow::ISCADMainWindow(QWidget* parent, Qt::WindowFlags flags, bool no
     connect(modelTabs_, SIGNAL(currentChanged(int)), this, SLOT(activateModel(int)));
     connect(modelTabs_, SIGNAL(tabCloseRequested(int)), this, SLOT(onCloseModel(int)));
 
-    QList<int> sizes;
-    sizes << 50 << 500+350+150;
-    spl->setSizes(sizes);
+    {
+      QList<int> sizes;
+      sizes << 1500 << 8500;
+      spl->setSizes(sizes);
+    }
+
+    {
+      QList<int> sizes;
+      sizes << 9500 << 500;
+      spl0->setSizes(sizes);
+    }
+
+    progressbar_=new QProgressBar;
+    bgparsestopbtn_=new QPushButton("STOP");
+    statusBar()->addPermanentWidget(progressbar_);
+    statusBar()->addPermanentWidget(bgparsestopbtn_);
 
     QMenu *fmenu = menuBar()->addMenu("&File");
     QMenu *mmenu = menuBar()->addMenu("&Model");
     QMenu *vmenu = menuBar()->addMenu("&View");
+    QMenu *msmenu = menuBar()->addMenu("M&easure");
+
+    QAction *act;
+
+    act=new QAction(("&New"), this);
+    fmenu->addAction(act);
+    connect(act, SIGNAL(triggered()), this, SLOT(onNewModel()));
 
     act_load_=new QAction(("&Load"), this);
     fmenu->addAction(act_load_);
@@ -218,6 +300,13 @@ ISCADMainWindow::ISCADMainWindow(QWidget* parent, Qt::WindowFlags flags, bool no
 
     act_saveas_ = new QAction(("&Save as..."), this);
     fmenu->addAction(act_saveas_);
+
+    fmenu->addSeparator();
+    act =new QAction(("&Quit"), this);
+    act->setShortcut(Qt::AltModifier + Qt::Key_F4);
+    fmenu->addAction(act);
+    connect(act, SIGNAL(triggered()), this, SLOT(close()));
+
 
     act_rebuild_ = new QAction(("&Rebuild model"), this);
     act_rebuild_->setShortcut(Qt::ControlModifier + Qt::Key_Return);
@@ -270,6 +359,20 @@ ISCADMainWindow::ISCADMainWindow(QWidget* parent, Qt::WindowFlags flags, bool no
 //     act->setShortcut(Qt::ControlModifier + Qt::Key_A);
     vmenu->addAction(act_reset_shading_);
 
+
+    act_measure_distance_=new QAction("Distance between points", this);
+    act_measure_distance_->setShortcut(Qt::ControlModifier + Qt::Key_M);
+    msmenu->addAction(act_measure_distance_);
+
+    act_sel_pts_=new QAction("Select vertices", this);
+    msmenu->addAction(act_sel_pts_);
+
+    act_sel_edgs_=new QAction("Select edges", this);
+    msmenu->addAction(act_sel_edgs_);
+
+    act_sel_faces_=new QAction("Select faces", this);
+    msmenu->addAction(act_sel_faces_);
+
     QSettings settings;
     restoreGeometry(settings.value("mainWindowGeometry").toByteArray());
     restoreState(settings.value("mainWindowState").toByteArray());
@@ -306,44 +409,51 @@ void ISCADMainWindow::closeEvent(QCloseEvent *event)
 
 
     
-
-
-
-ISCADModel* ISCADMainWindow::insertEmptyModel()
+void ISCADMainWindow::updateProgress(int step, int totalSteps)
 {
-    ISCADModel *model = new ISCADModel;
-    modelTabs_->addTab(model, "(unnamed)");
+  progressbar_->setMaximum(totalSteps);
+  progressbar_->setValue(step);
+}
+
+
+ISCADModelEditor* ISCADMainWindow::insertEmptyModel(bool bgparsing)
+{
+    ISCADModelEditor *me = new ISCADModelEditor();
+    modelTabs_->addTab(me, "(unnamed)");
     
-    connect(model, SIGNAL(displayStatus(const QString&)), this, SLOT(displayStatusMessage(const QString&)));
-    connect(model, SIGNAL(updateTabTitle(ISCADModel*, const boost::filesystem::path&, bool)), 
-            this, SLOT(onUpdateTabTitle(ISCADModel*, const boost::filesystem::path&, bool)));
+    connect(me->model(), SIGNAL(displayStatusMessage(const QString&)),
+            statusBar(), SLOT(showMessage(const QString&)));
+    connect(me->viewer(), SIGNAL(sendStatus(const QString&)),
+            statusBar(), SLOT(showMessage(const QString&)));
+    connect(me->model(), SIGNAL(statusProgress(int, int)),
+            this, SLOT(updateProgress(int, int)));
 
-    return model;
+    connect(me, SIGNAL(updateTabTitle(ISCADModelEditor*, const boost::filesystem::path&, bool)),
+            this, SLOT(onUpdateTabTitle(ISCADModelEditor*, const boost::filesystem::path&, bool)));
+
+    return me;
 }
 
-ISCADModel* ISCADMainWindow::insertModel(const boost::filesystem::path& file)
+ISCADModelEditor* ISCADMainWindow::insertModel(const boost::filesystem::path& file, bool bgparsing)
 {
-    ISCADModel* model = insertEmptyModel();
-    model->loadFile(file);
-    return model;
+    ISCADModelEditor* me = insertEmptyModel(bgparsing);
+    me->model()->loadFile(file);
+    me->model()->unsetUnsavedState();
+    return me;
 }
 
-ISCADModel* ISCADMainWindow::insertModelScript(const std::string& contents)
+ISCADModelEditor* ISCADMainWindow::insertModelScript(const std::string& contents, bool bgparsing)
 {
-    ISCADModel* model = insertEmptyModel();
-    model->setScript(contents);
-    return model;
+    ISCADModelEditor* me = insertEmptyModel(bgparsing);
+    me->model()->setScript(contents);
+    me->model()->unsetUnsavedState();
+    return me;
 }
 
     
 void ISCADMainWindow::onFileClicked(const QModelIndex &index)
 {
     insertModel( fileModel_->filePath(index).toStdString() );
-}
-
-void ISCADMainWindow::displayStatusMessage(const QString& message)
-{
-    statusBar()->showMessage(message);
 }
 
 void ISCADMainWindow::onCreateNewModel(const QString& directory)
@@ -357,9 +467,9 @@ void ISCADMainWindow::onCreateNewModel(const QString& directory)
     );
     if (fn!="")
     {
-        ISCADModel *model=insertEmptyModel();
-        model->setFilename(qPrintable(fn));
-        model->saveModel();
+        ISCADModelEditor *me=insertEmptyModel();
+        me->model()->setFilename(qPrintable(fn));
+        me->model()->saveModel();
     }
 }
 

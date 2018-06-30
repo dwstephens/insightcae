@@ -37,23 +37,55 @@ class Export
 {
   FeaturePtr model_;
   boost::filesystem::path filename_;
+    
+  ExportNamedFeatures namedfeats_;
   
-  ScalarPtr STL_accuracy_;
+  virtual size_t calcHash() const;
+  virtual void build();
 
+public:
+  Export(FeaturePtr model, const boost::filesystem::path& filename, ExportNamedFeatures namedfeats = ExportNamedFeatures() );
+  
+  virtual Handle_AIS_InteractiveObject createAISRepr() const;
+  virtual void write(std::ostream& ) const;
+};
+
+
+class ExportEMesh
+: public PostprocAction
+{
+  boost::filesystem::path filename_;
   FeatureSetPtr eMesh_featureSet_;
   ScalarPtr eMesh_accuracy_;
   ScalarPtr eMesh_maxlen_;
-  
-  ExportNamedFeatures namedfeats_;
-  
-public:
-  Export(FeaturePtr model, const boost::filesystem::path& filename, ExportNamedFeatures namedfeats = ExportNamedFeatures() );
-  Export(FeaturePtr model, const boost::filesystem::path& filename, ScalarPtr STL_accuracy);
-  Export(FeatureSetPtr eMesh_featureSet, const boost::filesystem::path& filename, ScalarPtr eMesh_accuracy, ScalarPtr eMesh_maxlen);
 
+  virtual size_t calcHash() const;
   virtual void build();
-  
-  virtual Handle_AIS_InteractiveObject createAISRepr(const Handle_AIS_InteractiveContext& context) const;
+
+public:
+  ExportEMesh(FeatureSetPtr eMesh_featureSet, const boost::filesystem::path& filename, ScalarPtr eMesh_accuracy, ScalarPtr eMesh_maxlen);
+
+  virtual Handle_AIS_InteractiveObject createAISRepr() const;
+  virtual void write(std::ostream& ) const;
+};
+
+
+class ExportSTL
+: public PostprocAction
+{
+  FeaturePtr model_;
+  boost::filesystem::path filename_;
+
+  ScalarPtr STL_accuracy_;
+  bool force_binary_;
+
+  virtual size_t calcHash() const;
+  virtual void build();
+
+public:
+  ExportSTL(FeaturePtr model, const boost::filesystem::path& filename, ScalarPtr STL_accuracy, bool force_binary=false);
+
+  virtual Handle_AIS_InteractiveObject createAISRepr() const;
   virtual void write(std::ostream& ) const;
 };
 

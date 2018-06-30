@@ -60,6 +60,128 @@ void gravity::addIntoDictionaries(OFdicts& dictionaries) const
 
 
 
+defineType(mirrorMesh);
+addToOpenFOAMCaseElementFactoryTable(mirrorMesh);
+
+mirrorMesh::mirrorMesh( OpenFOAMCase& c, const ParameterSet& ps )
+: OpenFOAMCaseElement(c, "mirrorMesh"),
+  p_(ps)
+{
+}
+
+void mirrorMesh::addIntoDictionaries(OFdicts& dictionaries) const
+{
+  OFDictData::dict& mmd=dictionaries.addDictionaryIfNonexistent("system/mirrorMeshDict");
+
+  mmd["planeTolerance"]=p_.planeTolerance;
+
+  if (const Parameters::plane_pointAndNormal_type* pn =
+      boost::get<Parameters::plane_pointAndNormal_type>(&p_.plane))
+    {
+      mmd["planeType"]="pointAndNormal";
+      OFDictData::dict d;
+      d["basePoint"]=OFDictData::vector3(pn->p0);
+      d["normalVector"]=OFDictData::vector3(pn->normal);
+      mmd["pointAndNormalDict"]=d;
+    }
+  else if (const Parameters::plane_threePoint_type* pt =
+           boost::get<Parameters::plane_threePoint_type>(&p_.plane))
+    {
+      mmd["planeType"]="embeddedPoints";
+      OFDictData::dict d;
+      d["point1"]=OFDictData::vector3(pt->p0);
+      d["point2"]=OFDictData::vector3(pt->p1);
+      d["point3"]=OFDictData::vector3(pt->p2);
+      mmd["embeddedPointsDict"]=d;
+    }
+  else
+    throw insight::Exception("Internal error: Unhandled selection!");
+}
+
+
+
+
+
+
+defineType(setFieldsConfiguration);
+addToOpenFOAMCaseElementFactoryTable(setFieldsConfiguration);
+
+
+
+setFieldsConfiguration::setFieldsConfiguration( OpenFOAMCase& c, const ParameterSet& ps )
+: OpenFOAMCaseElement(c, "setFieldsConfiguration"),
+  p_(ps)
+{
+}
+
+
+void setFieldsConfiguration::addIntoDictionaries(OFdicts& dictionaries) const
+{
+
+    OFDictData::dict& sFD
+      = dictionaries.addDictionaryIfNonexistent("system/setFieldsDict");
+
+    OFDictData::list dfvs;
+    BOOST_FOREACH(const Parameters::defaultValues_default_type& dfv,p_.defaultValues)
+    {
+      if (const auto * sdfv = boost::get<Parameters::defaultValues_default_scalar_type>(&dfv))
+        {
+          dfvs.push_back(str(format("volScalarFieldValue %s %g\n") % sdfv->name % sdfv->value));
+        }
+      else if (const auto * vdfv = boost::get<Parameters::defaultValues_default_vector_type>(&dfv))
+        {
+          dfvs.push_back(str(format("volVectorFieldValue %s %s\n") % vdfv->name % OFDictData::to_OF(vdfv->value)));
+        }
+      else
+        throw insight::Exception("Internal error: Unhandled selection!");
+    }
+    sFD["defaultFieldValues"]=dfvs;
+
+    OFDictData::list rs;
+    BOOST_FOREACH(const Parameters::regionSelectors_default_type& r, p_.regionSelectors)
+    {
+      if (const auto * box = boost::get<Parameters::regionSelectors_default_box_type>(&r))
+        {
+          OFDictData::list vl;
+          BOOST_FOREACH(const Parameters::regionSelectors_default_box_type::regionValues_default_type& bv, box->regionValues)
+          {
+            if (const auto * s = boost::get<Parameters::regionSelectors_default_box_type::regionValues_default_scalar_type>(&bv))
+              {
+                vl.push_back(str(format("volScalarFieldValue %s %g\n") % s->name % s->value));
+              }
+            else if (const auto * v = boost::get<Parameters::regionSelectors_default_box_type::regionValues_default_vector_type>(&bv))
+              {
+                vl.push_back(str(format("volVectorFieldValue %s %s\n") % v->name % OFDictData::to_OF(v->value)));
+              }
+            else
+              throw insight::Exception("Internal error: Unhandled type selection!");
+
+            OFDictData::dict fs;
+            fs["box"]=str(format("%s %s") % OFDictData::to_OF(box->p0) % OFDictData::to_OF(box->p1) );
+            fs["fieldValues"]=vl;
+
+            if (box->selectcells)
+              {
+                rs.push_back("boxToCell");
+                rs.push_back(fs);
+              }
+
+            if (box->selectfaces)
+              {
+                rs.push_back("boxToFace");
+                rs.push_back(fs);
+              }
+          }
+        }
+      else
+        throw insight::Exception("Internal error: Unhandled region selection!");
+    }
+    sFD["regions"]=rs;
+}
+
+
+
+
 defineType(volumeDrag);
 addToOpenFOAMCaseElementFactoryTable(volumeDrag);
 
@@ -289,10 +411,10 @@ ConstantPressureGradientSource::ConstantPressureGradientSource( OpenFOAMCase& c,
 
 void ConstantPressureGradientSource::addIntoDictionaries(OFdicts& dictionaries) const
 {
-  if (OFversion()==230)
+  if (OFversion()>=230)
   {
-  OFDictData::dict& controlDict=dictionaries.lookupDict("system/controlDict");  
-  controlDict.getList("libs").insertNoDuplicate( "\"libconstantPressureGradient.so\"" );  
+    OFDictData::dict& controlDict=dictionaries.lookupDict("system/controlDict");  
+    controlDict.getList("libs").insertNoDuplicate( "\"libconstantPressureGradient.so\"" );  
 
     OFDictData::dict coeffs;
     OFDictData::list flds; flds.push_back("U");
@@ -302,7 +424,14 @@ void ConstantPressureGradientSource::addIntoDictionaries(OFdicts& dictionaries) 
     OFDictData::dict fod;
     fod["type"]="constantPressureGradientExplicitSource";
     fod["active"]=true;
-    fod["selectionMode"]="all";
+    if (OFversion()>=400)
+    {
+        coeffs["selectionMode"]="all";
+    }
+    else
+    {
+        fod["selectionMode"]="all";
+    }
     fod["constantPressureGradientExplicitSourceCoeffs"]=coeffs;
 
     OFDictData::dict& fvOptions=dictionaries.addDictionaryIfNonexistent("system/fvOptions");
@@ -310,7 +439,7 @@ void ConstantPressureGradientSource::addIntoDictionaries(OFdicts& dictionaries) 
   }
   else
   {
-throw insight::Exception("constantPressureGradient unavailable!");
+    throw insight::Exception("constantPressureGradient unavailable!");
     // for channelFoam:
  //   OFDictData::dict& transportProperties=dictionaries.addDictionaryIfNonexistent("constant/transportProperties");
  //   transportProperties["Ubar"]=OFDictData::dimensionedData("Ubar", dimVelocity, OFDictData::vector3(p_.Ubar()));
@@ -338,52 +467,6 @@ void singlePhaseTransportProperties::addIntoDictionaries(OFdicts& dictionaries) 
 }
 
 
-
-
-
-defineType(perfectGasSinglePhaseThermophysicalProperties);
-addToOpenFOAMCaseElementFactoryTable(perfectGasSinglePhaseThermophysicalProperties);
-
-perfectGasSinglePhaseThermophysicalProperties::perfectGasSinglePhaseThermophysicalProperties( OpenFOAMCase& c, const ParameterSet& ps )
-: transportModel(c),
-  p_(ps)
-{
-}
- 
-void perfectGasSinglePhaseThermophysicalProperties::addIntoDictionaries(OFdicts& dictionaries) const
-{
-
-  OFDictData::dict& thermophysicalProperties=dictionaries.addDictionaryIfNonexistent("constant/thermophysicalProperties");
-  
-  OFDictData::dict tt;
-  tt["type"]="hePsiThermo";
-  tt["mixture"]="pureMixture";
-  tt["transport"]="const";
-  tt["thermo"]="eConst";
-  tt["equationOfState"]="perfectGas";
-  tt["specie"]="specie";
-  tt["energy"]="sensibleInternalEnergy";
-  thermophysicalProperties["thermoType"]=tt;
-  
-  const double R=8.3144598;
-  double M = p_.rho*R*p_.Tref/p_.pref;
-  double cv = R/(p_.kappa-1.) / M;
-
-  OFDictData::dict mixture, mix_sp, mix_td, mix_tr;
-  mix_sp["nMoles"]=1.;
-  mix_sp["molWeight"]=1e3*M;
-  
-  mix_td["Cv"]=cv;
-  mix_td["Hf"]=0.;
-  
-  mix_tr["mu"]=p_.nu*p_.rho;
-  mix_tr["Pr"]=p_.Pr;
-  
-  mixture["specie"]=mix_sp;
-  mixture["thermodynamics"]=mix_td;
-  mixture["transport"]=mix_tr;
-  thermophysicalProperties["mixture"]=mixture;
-}
 
 
 
@@ -597,9 +680,186 @@ void solidBodyMotionDynamicMesh::addIntoDictionaries(OFdicts& dictionaries) cons
         rmc["omega"]=2.*M_PI*rp->rpm/60.;
         sbc["rotatingMotionCoeffs"]=rmc;
     }
+    else if ( Parameters::motion_oscillatingRotating_type* ro = boost::get<Parameters::motion_oscillatingRotating_type>(&p.motion) )
+    {
+        sbc["solidBodyMotionFunction"]="oscillatingRotatingMotion";
+        OFDictData::dict rmc;
+        rmc["origin"]=OFDictData::vector3(ro->origin);
+        rmc["omega"]=ro->omega;
+        rmc["amplitude"]=OFDictData::vector3(ro->amplitude);
+        sbc["oscillatingRotatingMotionCoeffs"]=rmc;
+    }
+    else
+      throw insight::Exception("Internal error: Unhandled selection!");
 
     dynamicMeshDict["solidBodyCoeffs"]=sbc;
 }
+
+
+
+
+defineType(rigidBodyMotionDynamicMesh);
+addToOpenFOAMCaseElementFactoryTable(rigidBodyMotionDynamicMesh);
+
+
+
+rigidBodyMotionDynamicMesh::rigidBodyMotionDynamicMesh( OpenFOAMCase& c, const ParameterSet& ps )
+: dynamicMesh(c),
+  ps_(ps)
+{
+}
+
+void rigidBodyMotionDynamicMesh::addFields( OpenFOAMCase& c ) const
+{
+  c.addField
+  (
+      "pointDisplacement",
+       FieldInfo(vectorField, 	dimLength, 	list_of(0)(0)(0), pointField )
+  );
+}
+
+void rigidBodyMotionDynamicMesh::addIntoDictionaries(OFdicts& dictionaries) const
+{
+    Parameters p(ps_);
+
+    OFDictData::dict& dynamicMeshDict
+      = dictionaries.addDictionaryIfNonexistent("constant/dynamicMeshDict");
+
+    dynamicMeshDict["dynamicFvMesh"]="dynamicMotionSolverFvMesh";
+    dynamicMeshDict["solver"]="rigidBodyMotion";
+
+    OFDictData::list libl;
+    libl.push_back("\"librigidBodyMeshMotion.so\"");
+    dynamicMeshDict["motionSolverLibs"]=libl;
+
+    OFDictData::dict rbmc;
+    rbmc["report"]=true;
+
+    OFDictData::dict sc;
+     sc["type"]="Newmark";
+    rbmc["solver"]=sc;
+
+    if (const Parameters::rho_field_type* rhof = boost::get<Parameters::rho_field_type>(&p.rho))
+      {
+        rbmc["rho"]=rhof->fieldname;
+      }
+    else if (const Parameters::rho_constant_type* rhoc = boost::get<Parameters::rho_constant_type>(&p.rho))
+      {
+        rbmc["rho"]="rhoInf";
+        rbmc["rhoInf"]=rhoc->rhoInf;
+      }
+
+    rbmc["accelerationRelaxation"]=0.4;
+
+    OFDictData::dict bl;
+    BOOST_FOREACH(const Parameters::bodies_default_type& body, p.bodies)
+    {
+      OFDictData::dict bc;
+
+      bc["type"]="rigidBody";
+      bc["parent"]="root";
+      bc["centreOfMass"]=OFDictData::vector3(0,0,0);
+      bc["mass"]=body.mass;
+      bc["inertia"]=boost::str(boost::format("(%g 0 0 %g 0 %g)") % body.Ixx % body.Iyy % body.Izz);
+      bc["transform"]=boost::str(boost::format("(1 0 0 0 1 0 0 0 1) (%g %g %g)")
+                                 % body.centreOfMass(0) % body.centreOfMass(1) % body.centreOfMass(2) );
+
+      OFDictData::list jl;
+      BOOST_FOREACH(const Parameters::bodies_default_type::translationConstraint_default_type& tc,
+                    body.translationConstraint)
+      {
+        std::string code;
+        if (tc==Parameters::bodies_default_type::translationConstraint_default_type::Px) code="Px";
+        else if (tc==Parameters::bodies_default_type::translationConstraint_default_type::Py) code="Py";
+        else if (tc==Parameters::bodies_default_type::translationConstraint_default_type::Pz) code="Pz";
+        else if (tc==Parameters::bodies_default_type::translationConstraint_default_type::Pxyz) code="Pxyz";
+        else throw insight::Exception("internal error: unhandled value!");
+        OFDictData::dict d;
+         d["type"]=code;
+        jl.push_back(d);
+      }
+      BOOST_FOREACH(const Parameters::bodies_default_type::rotationConstraint_default_type& rc,
+                    body.rotationConstraint)
+      {
+        std::string code;
+        if (rc==Parameters::bodies_default_type::rotationConstraint_default_type::Rx) code="Rx";
+        else if (rc==Parameters::bodies_default_type::rotationConstraint_default_type::Ry) code="Ry";
+        else if (rc==Parameters::bodies_default_type::rotationConstraint_default_type::Rz) code="Rz";
+        else if (rc==Parameters::bodies_default_type::rotationConstraint_default_type::Rxyz) code="Rxyz";
+        else throw insight::Exception("internal error: unhandled value!");
+        OFDictData::dict d;
+         d["type"]=code;
+        jl.push_back(d);
+      }
+      OFDictData::dict jc;
+       jc["type"]="composite";
+       jc["joints"]=jl;
+      bc["joint"]=jc;
+
+      OFDictData::list pl;
+      std::copy(body.patches.begin(), body.patches.end(), std::back_inserter(pl));
+      bc["patches"]=pl;
+
+      bc["innerDistance"]=body.innerDistance;
+      bc["outerDistance"]=body.outerDistance;
+
+      bl[body.name]=bc;
+    }
+    rbmc["bodies"]=bl;
+
+    OFDictData::dict rc;
+     // empty
+    rbmc["restraints"]=rc;
+
+    dynamicMeshDict["rigidBodyMotionCoeffs"]=rbmc;
+}
+
+
+
+
+
+
+defineType(porousZone);
+addToOpenFOAMCaseElementFactoryTable(porousZone);
+
+porousZone::porousZone( OpenFOAMCase& c, const ParameterSet& ps )
+: OpenFOAMCaseElement(c, ""),
+  p_(ps)
+{
+    name_="porousZone"+p_.name;
+}
+
+void porousZone::addIntoDictionaries(OFdicts& dictionaries) const
+{
+  OFDictData::dict& porosityProperties
+    = dictionaries.addDictionaryIfNonexistent("constant/porosityProperties");
+
+  OFDictData::dict pc;
+
+  pc["type"]="DarcyForchheimer";
+  pc["active"]=true;
+  pc["cellZone"]=p_.name;
+    OFDictData::dict dfc;
+    dfc["d"]=OFDictData::vector3(p_.d);
+    dfc["f"]=OFDictData::vector3(p_.f);
+
+    OFDictData::dict cs;
+     cs["type"]="cartesian";
+     cs["origin"]=OFDictData::vector3(vec3(0,0,0));
+     OFDictData::dict cr;
+      cr["type"]="axesRotation";
+      cr["e1"]=OFDictData::vector3(p_.direction_x);
+      cr["e2"]=OFDictData::vector3(p_.direction_y);
+     cs["coordinateRotation"]=cr;
+    dfc["coordinateSystem"]=cs;
+  pc["DarcyForchheimerCoeffs"]=dfc;
+
+  porosityProperties[p_.name]=pc;
+
+}
+
+
+
 
 }
 

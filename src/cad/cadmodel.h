@@ -39,7 +39,10 @@ namespace insight
 namespace cad 
 {
 
-    
+namespace parser {
+class SyntaxElementDirectory;
+typedef boost::shared_ptr<SyntaxElementDirectory> SyntaxElementDirectoryPtr;
+}
     
     
 class Model
@@ -85,11 +88,15 @@ protected:
     ModelTable		models_;
     PostprocActionTable	postprocActions_;
 
+    insight::cad::parser::SyntaxElementDirectoryPtr syn_elem_dir_;
     boost::filesystem::path modelfile_;
 
 
     void defaultVariables();
     void copyVariables(const ModelVariableTable& vars);
+
+    virtual size_t calcHash() const;
+    virtual void build();
 
 public:
 
@@ -97,7 +104,6 @@ public:
     Model(const std::string& modelname, const ModelVariableTable& vars = ModelVariableTable());
     Model(const boost::filesystem::path& modelfile, const ModelVariableTable& vars = ModelVariableTable());
 
-    virtual void build();
 
     const ScalarTable& 	scalarSymbols() const;
     const VectorTable&	vectorSymbols() const;

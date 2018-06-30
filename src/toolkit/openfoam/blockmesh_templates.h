@@ -98,7 +98,7 @@ public:
     inline static ParameterSet defaultParameters()
     {
         return Parameters::makeDefault();
-    };
+    }
 
     double rCore() const;
 };
@@ -131,9 +131,23 @@ geometry = set
 
 mesh = set
 {
-    nx = int 10 "# cells in X direction"
-    ny = int 10 "# cells in Y direction"
-    nz = int 10 "# cells in Z direction"
+    resolution = selectablesubset {{
+
+     cubical set {
+        n_max = int 10 "Number of cells along longest side. The other sides are discretized with the same cell size but with adjusted number of cells."
+     }
+
+     cubical_size set {
+        delta = double 0.1 "Uniform cell length."
+     }
+
+     individual set {
+        nx = int 10 "# cells in X direction"
+        ny = int 10 "# cells in Y direction"
+        nz = int 10 "# cells in Z direction"
+     }
+
+    }} cubical "Mesh resolution"
 
     defaultPatchName = string "walls" "name of patch where all patches with empty names are assigned to."
     XpPatchName = string "" "name of patch on forward (+X) side"
@@ -160,7 +174,56 @@ public:
     inline static ParameterSet defaultParameters()
     {
         return Parameters::makeDefault();
-    };
+    }
+};
+
+
+
+
+
+
+/**
+ * A simple spherical mesh
+ */
+
+class blockMeshDict_Sphere
+    : public BlockMeshTemplate
+{
+public:
+#include "blockmesh_templates__blockMeshDict_Sphere__Parameters.h"
+/*
+PARAMETERSET>>> blockMeshDict_Sphere Parameters
+
+geometry = set
+{
+    R = double 1.0 "[m] Radius"
+    center = vector(0 0 0) "[m] Sphere center"
+}
+
+mesh = set
+{
+    n_rad = int 10 "Number of cells in radial direction"
+
+    outerPatchName = string "outer" "name of boundary patch."
+}
+
+<<<PARAMETERSET
+*/
+
+protected:
+    Parameters p_;
+
+public:
+    declareType ( "blockMeshDict_Sphere" );
+
+    blockMeshDict_Sphere ( OpenFOAMCase& c, const ParameterSet& ps = Parameters::makeDefault() );
+
+    virtual void create_bmd();
+
+    inline static ParameterSet defaultParameters()
+    {
+        return Parameters::makeDefault();
+    }
 };
 
 }

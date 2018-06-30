@@ -7,8 +7,12 @@
 #include "qocc.h"
 #include <QtOpenGL/QGLWidget>
 
+#include "qmodelstepitem.h"
 
-#if (OCC_VERSION_MINOR>=7)
+
+class QDisplayableModelTreeItem;
+
+#if ((OCC_VERSION_MAJOR<7)&&(OCC_VERSION_MINOR>=7))
 #include "Graphic3d_ClipPlane.hxx"
 #endif
 
@@ -23,11 +27,11 @@
 
 #define ValZWMin 1 /** For elastic bean selection */
 
-class Handle_AIS_InteractiveContext;
-class Handle_V3d_View;
+// class Handle_AIS_InteractiveContext;
+// class Handle_V3d_View;
 
-class QOCC_DECLSPEC QoccViewWidget : 
-public QWidget
+class QOCC_DECLSPEC QoccViewWidget
+: public QWidget
 {
 	Q_OBJECT
 
@@ -42,27 +46,21 @@ public:
     CurAction3d_WindowZooming, 
     CurAction3d_DynamicPanning,
     CurAction3d_GlobalPanning, 
-    CurAction3d_DynamicRotation 
+    CurAction3d_DynamicRotation,
   };
 
-/*
-	enum ViewAction {	ViewFitAllId, 
-						ViewFitAreaId, 
-						ViewZoomId, 
-						ViewPanId, 
-						ViewGlobalPanId,
-						ViewFrontId, 
-						ViewBackId, 
-						ViewTopId, 
-						ViewBottomId, 
-						ViewLeftId, 
-						ViewRightId,
-						ViewAxoId, 
-						ViewRotationId, 
-						ViewResetId, 
-						ViewHlrOffId, 
-						ViewHlrOnId };
-*/
+  enum CurrentInteractionMode
+  {
+    CIM_Normal,
+    CIM_MeasurePoints,
+    CIM_InsertPointIDs,
+    CIM_InsertEdgeIDs,
+    CIM_InsertFaceIDs
+  };
+
+protected:
+  std::vector<Handle_AIS_InteractiveObject> additionalDisplayObjectsForSelection_;
+
 public:
 
   QoccViewWidget
@@ -86,17 +84,27 @@ public:
 
   void redraw( bool isPainting = false );
 
+  QDisplayableModelTreeItem* getOwnerItem(Handle_AIS_InteractiveObject selected);
+  QDisplayableModelTreeItem* getSelectedItem();
+
 signals:
 
   void initialized();
-  void selectionChanged(QoccViewWidget* aView);
+  void graphicalSelectionChanged(QDisplayableModelTreeItem* selection, QoccViewWidget* viewer);
   void mouseMoved   ( V3d_Coordinate X, V3d_Coordinate Y, V3d_Coordinate Z );
   void pointClicked ( V3d_Coordinate X, V3d_Coordinate Y, V3d_Coordinate Z );
   void sendStatus   ( const QString aMessage );
   //! Just a placeholder for now
-  void popupMenu ( QoccViewWidget* aView, const QPoint aPoint ); 
   void error ( int errorCode, QString& errorDescription );
+
+  void addEvaluationToModel (const QString& name, insight::cad::PostprocActionPtr smp, bool visible);
+
+  void insertNotebookText(const QString& text);
+
+protected slots:
   
+  void onGraphicalSelectionChanged(QDisplayableModelTreeItem* selection, QoccViewWidget* viewer);
+
 public slots:
   
   void idle();
@@ -122,13 +130,27 @@ public slots:
   void viewReset();
   void setReset();
   
+  void toggleGrid ();
   void toggleClipXY ( void );
   void toggleClipYZ ( void );
   void toggleClipXZ ( void );
   void toggleClip ( double px, double py, double pz, double nx, double ny, double nz );
   
   void displayMessage(const QString& msg);
-  
+
+  void onShow(QDisplayableModelTreeItem* di);
+  void onHide(QDisplayableModelTreeItem* di);
+  void onSetDisplayMode(QDisplayableModelTreeItem* di, AIS_DisplayMode sm);
+  void onSetColor(QDisplayableModelTreeItem* di, Quantity_Color c);
+  void onSetResolution(QDisplayableModelTreeItem* di, double res);
+
+  void onSetClipPlane(QObject* datumplane);
+
+  void onMeasureDistance();
+  void onSelectPoints();
+  void onSelectEdges();
+  void onSelectFaces();
+
 protected: // methods
 
   virtual void paintEvent        ( QPaintEvent* e );
@@ -137,10 +159,12 @@ protected: // methods
   virtual void mouseReleaseEvent ( QMouseEvent* e );
   virtual void mouseMoveEvent    ( QMouseEvent* e );
   virtual void wheelEvent        ( QWheelEvent* e );
-  virtual void keyPressEvent        ( QKeyEvent* e );
-  virtual void keyReleaseEvent        ( QKeyEvent* e );
+  virtual void keyPressEvent     ( QKeyEvent* e );
+  virtual void keyReleaseEvent   ( QKeyEvent* e );
   
-  virtual void leaveEvent		   ( QEvent * );
+  virtual void leaveEvent	 ( QEvent * );
+
+  void displayContextMenu( const QPoint& p);
   
 private: // members
   
@@ -154,17 +178,17 @@ private: // members
   Handle_V3d_View                 myView;
   Handle_V3d_Viewer               myViewer;
 
-#if (OCC_VERSION_MINOR<7)
+#if ((OCC_VERSION_MAJOR<7)&&(OCC_VERSION_MINOR<7))
   Handle_V3d_Plane		clipPlane_;
 #else
   Handle_Graphic3d_ClipPlane	clipPlane_;  
 #endif
 
-  Standard_Boolean		myViewResized;
-  Standard_Boolean		myViewInitialized;
+  bool		myViewResized;
+  bool		myViewInitialized;
   CurrentAction3d               myMode;
-  Quantity_Factor               myCurZoom;
-  Standard_Boolean		myGridSnap;
+  double               myCurZoom;
+  bool		myGridSnap;
   AIS_StatusOfDetection		myDetection;
   
   V3d_Coordinate					
@@ -176,13 +200,23 @@ private: // members
   QPoint			myStartPoint;
   QPoint			myCurrentPoint;
   
-  Standard_Real			myPrecision;
-  Standard_Real			myViewPrecision;
-  Standard_Boolean		myMapIsValid;
+  double			myPrecision;
+  double			myViewPrecision;
+  bool		myMapIsValid;
   Qt::KeyboardModifiers		myKeyboardFlags;
   Qt::MouseButton		myButtonFlags;
   QCursor			myCrossCursor;
   
+  bool showGrid;
+
+  CurrentInteractionMode cimode_;
+
+  // data for measure points
+  insight::cad::VectorPtr measpts_p1_, measpts_p2_;
+
+  // for pointIDs
+  insight::cad::FeatureSetPtr selpts_;
+
 private: // methods
   
   void onLeftButtonDown  ( Qt::KeyboardModifiers nFlags, const QPoint point );
@@ -228,6 +262,7 @@ private: // methods
      Standard_Real& Z
      );
   
+#if (OCC_VERSION_MAJOR<7)
   void paintOCC();
   static int paintCallBack 
     (
@@ -235,7 +270,8 @@ private: // methods
      void*, 
      Aspect_GraphicCallbackStruct*
      );
-  
+#endif
+    
 public:
 
   bool dump(Standard_CString theFile);

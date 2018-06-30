@@ -168,6 +168,11 @@ std::string OFEs::detectCurrentOFE()
   return std::string();
 }
 
+const OFEnvironment& OFEs::getCurrent()
+{
+  return get( detectCurrentOFE() );
+}
+
 OFEs::OFEs()
 {
   const char *envvar=getenv("INSIGHT_OFES");
@@ -383,6 +388,16 @@ bool BoundaryCondition::providesBCsForPatch(const std::string& patchName) const
 
 
 
+defineType(turbulenceModel);
+defineFactoryTable(turbulenceModel, LIST(OpenFOAMCase& ofc, const ParameterSet& ps), LIST(ofc, ps));
+
+turbulenceModel::turbulenceModel(OpenFOAMCase& c, const ParameterSet&)
+: OpenFOAMCaseElement(c, "turbulenceModel")
+{
+}
+
+
+
 SolverOutputAnalyzer::SolverOutputAnalyzer(ProgressDisplayer& pdisp)
 : pdisp_(pdisp),
   curTime_(nan("NAN")),
@@ -401,7 +416,7 @@ void SolverOutputAnalyzer::update(const string& line)
     boost::regex time_pattern("^Time = (.+)$");
     boost::regex solver_pattern("^(.+): +Solving for (.+), Initial residual = (.+), Final residual = (.+), No Iterations (.+)$");
     boost::regex cont_pattern("^time step continuity errors : sum local = (.+), global = (.+), cumulative = (.+)$");
-    boost::regex force_pattern("^forces (.+) output:$");
+    boost::regex force_pattern("^(extendedForces|forces) (.+) (output|write):$");
     boost::regex sw_pattern("^ *[Ss]um of moments");
     
         if ( boost::regex_search( line, match, sw_pattern, boost::match_default ) && !curforcename_.empty() )
@@ -485,7 +500,7 @@ void SolverOutputAnalyzer::update(const string& line)
                 curforcename_="";
             }
             
-            curforcename_=match[1];
+            curforcename_=match[2];
             curforcesection_=1;
             curforcevalue_=arma::zeros(12);
         }
@@ -672,12 +687,12 @@ void OpenFOAMCase::createOnDisk
     {
         if (!exists(dictpath.parent_path())) 
         {
-        boost::filesystem::create_directories(dictpath.parent_path());
+          boost::filesystem::create_directories(dictpath.parent_path());
         }
         
         {
-        std::ofstream f(dictpath.c_str());
-        i->second->write(dictpath);
+          std::ofstream f(dictpath.c_str());
+          i->second->write(dictpath);
         }
         std::cout<<"CREATED."<<std::endl;
     } else
@@ -913,10 +928,15 @@ void OpenFOAMCase::addField(const std::string& name, const FieldInfo& field)
   fields_[name]=field;
 }
 
-void OpenFOAMCase::parseBoundaryDict(const boost::filesystem::path& location, OFDictData::dict& boundaryDict) const
+boost::filesystem::path OpenFOAMCase::boundaryDictPath(const boost::filesystem::path& location) const
 {
   boost::filesystem::path basepath(location);
-  boost::filesystem::path dictpath = basepath / "constant" / "polyMesh" / "boundary";
+  return basepath / "constant" / "polyMesh" / "boundary";
+}
+
+void OpenFOAMCase::parseBoundaryDict(const boost::filesystem::path& location, OFDictData::dict& boundaryDict) const
+{
+  boost::filesystem::path dictpath = boundaryDictPath(location);
   std::ifstream f(dictpath.c_str());
   if (!readOpenFOAMBoundaryDict(f, boundaryDict))
       throw insight::Exception("Failed to parse boundary dict "+dictpath.string());

@@ -23,8 +23,10 @@
 #include "BRepCheck_Shell.hxx"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
 
-#include "GEOM/GEOMAlgo_Gluer2.hxx"
+
+#include "GEOMAlgo_Gluer2.hxx"
 
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
@@ -40,6 +42,15 @@ namespace cad {
 defineType(GlueFaces);
 addToFactoryTable(Feature, GlueFaces);
 
+size_t GlueFaces::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  h+=*feat_;
+  h+=tol_->value();
+  return h.getHash();
+}
+
 GlueFaces::GlueFaces()
 {}
 
@@ -47,14 +58,12 @@ GlueFaces::GlueFaces()
 GlueFaces::GlueFaces(FeaturePtr feat, ScalarPtr tol)
 : feat_(feat), tol_(tol)
 {
-    ParameterListHash h(this);
-    h+=this->type();
-    h+=*feat;
-    h+=tol_->value();
 }
 
 void GlueFaces::build()
 {
+  ExecTimer t("GlueFaces::build() ["+featureSymbolName()+"]");
+
   // Example: https://github.com/FedoraScientific/salome-geom/blob/master/src/GEOMImpl/GEOMImpl_GlueDriver.cxx
   GEOMAlgo_Gluer2 ggl;
   

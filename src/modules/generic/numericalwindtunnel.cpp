@@ -181,7 +181,7 @@ void NumericalWindtunnel::createCase(insight::OpenFOAMCase& cm)
   cm.addRemainingBCs<WallBC>(boundaryDict, WallBC::Parameters() );
   
   insertTurbulenceModel(cm, 
-    parameters_.get<SelectionParameter>("fluid/turbulenceModel").selection());
+    parameters_.get<SelectableSubsetParameter>("fluid/turbulenceModel"));
 
 }
 
@@ -435,11 +435,6 @@ ResultSetPtr NumericalWindtunnel::evaluateResults(OpenFOAMCase& cm)
       break;
     }
   }
-  
-  // get car surface area
-//   arma::mat As=patchIntegrate(cm, executionPath(), "p", carPatchName);
-//   double A=2.*As(As.n_rows-1,2);
-//   cout<<"A="<<A<<endl;
 
   arma::mat Ah=projectedArea(cm, executionPath(), 
     vec3(1,0,0),

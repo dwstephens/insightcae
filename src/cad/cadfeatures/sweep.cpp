@@ -20,6 +20,8 @@
 #include "sweep.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+#include "base/tools.h"
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -40,6 +42,17 @@ defineType(Sweep);
 addToFactoryTable(Feature, Sweep);
 
 
+size_t Sweep::calcHash() const
+{
+  ParameterListHash h;
+  h+=this->type();
+  BOOST_FOREACH(const FeaturePtr& f, secs_)
+  {
+      h+=*f;
+  }
+  return h.getHash();
+}
+
 
 
 Sweep::Sweep(): Feature()
@@ -50,14 +63,7 @@ Sweep::Sweep(): Feature()
 
 Sweep::Sweep(const std::vector<FeaturePtr>& secs)
 : secs_(secs)
-{
-    ParameterListHash h(this);
-    h+=this->type();
-    BOOST_FOREACH(const FeaturePtr& f, secs)
-    {
-        h+=*f;
-    }
-}
+{}
 
 
 
@@ -72,6 +78,8 @@ FeaturePtr Sweep::create ( const std::vector<FeaturePtr>& secs )
 
 void Sweep::build()
 {
+    ExecTimer t("Sweep::build() ["+featureSymbolName()+"]");
+    
     if ( secs_.size() <2 ) {
         throw insight::Exception ( "Insufficient number of sections given!" );
     }
