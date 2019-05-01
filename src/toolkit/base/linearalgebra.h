@@ -26,6 +26,8 @@
 
 #include <gsl/gsl_errno.h>
 #include <gsl/gsl_spline.h>
+#include "gsl/gsl_multimin.h"
+#include "gsl/gsl_integration.h"
 
 #include "boost/shared_ptr.hpp"
 #include "boost/ptr_container/ptr_vector.hpp"
@@ -43,13 +45,15 @@ public:
   ~GSLExceptionHandling();
 };
 
+arma::mat vec1(double x);
+arma::mat vec2(double x, double y);
 arma::mat vec3(double x, double y, double z);
+
 arma::mat tensor3(
   double xx, double xy, double xz,
   double yx, double yy, double yz,
   double zx, double zy, double zz
 );
-arma::mat vec2(double x, double y);
 
 template<class T>
 arma::mat Tensor(const T& t)
@@ -186,7 +190,7 @@ public:
 
 private:
   arma::mat xy_, first_, last_;
-  boost::shared_ptr<gsl_interp_accel> acc;
+  std::shared_ptr<gsl_interp_accel> acc;
   boost::ptr_vector<gsl_spline> spline ;
   
 //   Interpolator(const Interpolator&);
@@ -250,12 +254,102 @@ arma::mat integrate(const arma::mat& xy);
 double integrate(const Interpolator& ipol, double a, double b, int comp);
 arma::mat integrate(const Interpolator& ipol, double a, double b);
 
+
+
+template<class F>
+double functor_int (double x, void * params) {
+  F* p = static_cast<F *>(params);
+  return (*p)(x);
+}
+
+/**
+ * computes the definite integral over f from a to b numerically
+ */
+template<class F>
+double integrate(F f, double a, double b)
+{
+  gsl_integration_workspace * w
+    = gsl_integration_workspace_alloc (1000);
+
+  double result, error;
+
+  F* p=&f;
+  gsl_function FUNC;
+  FUNC.function = &functor_int<F>;
+  FUNC.params = p;
+
+  gsl_integration_qags
+  (
+    &FUNC,
+    a, b,
+    0, 1e-5, 1000,
+    w, &result, &error
+  );
+//  std::cout<<"integration residual = "<<error<<" (result="<<result<<")"<<std::endl;
+
+  gsl_integration_workspace_free (w);
+
+  return result;
+}
+
+
+/**
+ * computes the definite integral over f from a to b numerically using trapez rule
+ */
+template<class F>
+double integrate_trpz(F f, double a, double b, int n=20)
+{
+  double res=0.;
+
+  double dx=(b-a)/double(n-1);
+  for (int i=0; i<n; i++)
+  {
+      double x = a+ dx*(double(i)+0.5);
+      res+=f(x)*dx;
+  }
+  return res;
+}
+
+
+/**
+ * computes the semi-indefinite integral over f from a to infinity numerically
+ */
+template<class F>
+double integrate_indef(F f, double a=0)
+{
+  gsl_integration_workspace * w
+    = gsl_integration_workspace_alloc (1000);
+
+  double result, error;
+
+  F* p=&f;
+  gsl_function FUNC;
+  FUNC.function = &functor_int<F>;
+  FUNC.params = p;
+
+  gsl_integration_qagiu
+  (
+    &FUNC,
+    a,
+    0, 1e-5, 1000,
+    w, &result, &error
+  );
+//  std::cout<<"integration residual = "<<error<<" (result="<<result<<")"<<std::endl;
+
+  gsl_integration_workspace_free (w);
+
+  return result;
+}
+
 struct compareArmaMat 
 {
   bool operator()(const arma::mat& v1, const arma::mat& v2) const;
 };
 
-
+struct CoordinateSystem
+{
+  arma::mat origin, ex, ey, ez;
+};
 //typedef std::map<arma::mat, int, CompMat> SortedMatMap;
 
 }

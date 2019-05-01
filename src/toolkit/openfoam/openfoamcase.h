@@ -128,6 +128,7 @@ public:
      */
     static std::string detectCurrentOFE();
     static const OFEnvironment& getCurrent ( );
+    static const OFEnvironment& getCurrentOrPreferred();
 
     OFEs();
     ~OFEs();
@@ -137,8 +138,9 @@ public:
 
 #define addToOpenFOAMCaseElementFactoryTable(DerivedClass) \
  addToFactoryTable(OpenFOAMCaseElement, DerivedClass); \
+ addToCaseElementFactoryTable(DerivedClass); \
  addToStaticFunctionTable(OpenFOAMCaseElement, DerivedClass, defaultParameters); \
- addToStaticFunctionTable(OpenFOAMCaseElement, DerivedClass, category)
+ addToStaticFunctionTable(OpenFOAMCaseElement, DerivedClass, category);
  
 
 class OpenFOAMCaseElement
@@ -149,6 +151,8 @@ public:
     declareFactoryTable ( OpenFOAMCaseElement, LIST ( OpenFOAMCase& c, const ParameterSet& ps ), LIST ( c, ps ) );
     declareStaticFunctionTable ( defaultParameters, ParameterSet );
     declareStaticFunctionTable ( category, std::string );
+    declareStaticFunctionTable (validator, ParameterSet_ValidatorPtr);
+    declareStaticFunctionTable (visualizer, ParameterSet_VisualizerPtr);
     declareType ( "OpenFOAMCaseElement" );
 
     OpenFOAMCaseElement ( OpenFOAMCase& c, const std::string& name );
@@ -158,6 +162,7 @@ public:
     inline OpenFOAMCase& OFcase();
 
     int OFversion() const;
+    virtual void modifyFilesOnDiskBeforeDictCreation ( const OpenFOAMCase& cm, const boost::filesystem::path& location ) const;
     virtual void modifyMeshOnDisk ( const OpenFOAMCase& cm, const boost::filesystem::path& location ) const;
     virtual void modifyCaseOnDisk ( const OpenFOAMCase& cm, const boost::filesystem::path& location ) const;
     virtual void addFields( OpenFOAMCase& c ) const;
@@ -165,11 +170,14 @@ public:
 
     virtual bool providesBCsForPatch ( const std::string& patchName ) const;
     
-    static std::string category() { return "Uncategorized"; }
+    static std::string category();
+    static ParameterSet_ValidatorPtr validator();
+    static ParameterSet_VisualizerPtr visualizer();
+    static bool isInConflict(const CaseElement& other);
 };
 
 
-typedef boost::shared_ptr<OpenFOAMCaseElement> OpenFOAMCaseElementPtr;
+typedef std::shared_ptr<OpenFOAMCaseElement> OpenFOAMCaseElementPtr;
 
 
 
@@ -225,6 +233,7 @@ public:
     }
 
     virtual bool providesBCsForPatch ( const std::string& patchName ) const;
+
 };
 
 
@@ -259,6 +268,8 @@ public:
   virtual AccuracyRequirement minAccuracyRequirement() const =0;
 
   static std::string category() { return "Turbulence Model"; }
+
+  static bool isInConflict(const CaseElement& e) { return (dynamic_cast<const turbulenceModel*>(&e)); }
 };
 
 
@@ -356,20 +367,21 @@ public:
 
     bool isCompressible() const;
 
-    boost::shared_ptr<OFdicts> createDictionaries() const;
+    void modifyFilesOnDiskBeforeDictCreation ( const boost::filesystem::path& location ) const;
+    std::shared_ptr<OFdicts> createDictionaries() const;
     void modifyMeshOnDisk ( const boost::filesystem::path& location ) const;
     void modifyCaseOnDisk ( const boost::filesystem::path& location ) const;
 
     virtual void createOnDisk 
     ( 
         const boost::filesystem::path& location, 
-        boost::shared_ptr<OFdicts> dictionaries, 
-        const boost::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles = boost::shared_ptr<std::vector<boost::filesystem::path> >()
+        std::shared_ptr<OFdicts> dictionaries, 
+        const std::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles = std::shared_ptr<std::vector<boost::filesystem::path> >()
     );
     virtual void createOnDisk 
     ( 
         const boost::filesystem::path& location, 
-        const boost::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles = boost::shared_ptr<std::vector<boost::filesystem::path> >()
+        const std::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles = std::shared_ptr<std::vector<boost::filesystem::path> >()
     );
 
     virtual bool meshPresentOnDisk ( const boost::filesystem::path& location ) const;
@@ -430,45 +442,20 @@ public:
 
     std::vector<std::string> fieldNames() const;
 
+    bool hasField(const std::string& fname ) const;
+
     inline FieldInfo& field ( const std::string& fname )
     {
         createFieldListIfRequired();
         return fields_.find ( fname )->second;
     }
 
-    template<class T>
-    const T& findUniqueElement() const
-    {
-        const T* the_e = NULL;
-
-        bool found=false;
-        for ( boost::ptr_vector<CaseElement>::const_iterator i=elements_.begin();
-                i!=elements_.end(); i++ ) {
-            const T *e= dynamic_cast<const T*> ( & ( *i ) );
-            if ( e ) {
-                if ( found ) {
-                    throw insight::Exception ( "OpenFOAMCase::findUniqueElement(): Multiple elements of requested type "+T::typeName+" in queried OpenFOAM case!" );
-                }
-                the_e=e;
-                found=true;
-            }
-        }
-        if ( !found ) {
-            throw insight::Exception ( "OpenFOAMCase::findUniqueElement(): No element of requested type "+T::typeName+" in queried OpenFOAM case found !" );
-        }
-
-        return *the_e;
-    }
-
-    template<class T>
-    T& getUniqueElement()
-    {
-        return const_cast<T&> ( findUniqueElement<T>() );
-    }
 
     void setFromXML(const std::string& xml, const boost::filesystem::path& file, bool skipOFE=true, bool skipBCs=false, const boost::filesystem::path& casepath="");
     void loadFromFile(const boost::filesystem::path& file, bool skipOFE=true, bool skipBCs=false, const boost::filesystem::path& casepath="");
     
+
+    virtual bool hasCyclicBC() const;
 
 };
 

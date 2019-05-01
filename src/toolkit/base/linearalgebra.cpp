@@ -26,8 +26,7 @@
 #include "boost/tuple/tuple.hpp"
 #include "boost/format.hpp"
 #include "base/exception.h"
-#include "gsl/gsl_multimin.h"
-#include "gsl/gsl_integration.h"
+
 // #include "minpack.h"
 // #include <dlib/optimization.h>
 
@@ -57,7 +56,22 @@ GSLExceptionHandling::~GSLExceptionHandling()
 {
   gsl_set_error_handler(oldHandler_);
 }
-  
+
+
+mat vec1(double x)
+{
+  mat v;
+  v << x << endr;
+  return v;
+}
+
+mat vec2(double x, double y)
+{
+  mat v;
+  v << x <<endr << y << endr;
+  return v;
+}
+
 mat vec3(double x, double y, double z)
 {
   mat v;
@@ -80,12 +94,6 @@ arma::mat tensor3(
   return v;
 }
 
-mat vec2(double x, double y)
-{
-  mat v;
-  v << x <<endr << y << endr;
-  return v;
-}
 
 
 mat rotMatrix( double theta, mat u )
@@ -110,7 +118,7 @@ arma::mat rotated( const arma::mat&p, double theta, const arma::mat& axis, const
 std::string toStr(const arma::mat& v3)
 {
   std::string s="";
-  for (int i=0; i<3; i++)
+  for (arma::uword i=0; i<3; i++)
     s+=" "+lexical_cast<std::string>(v3(i));
   return s+" ";
 }
@@ -122,18 +130,18 @@ arma::mat linearRegression(const arma::mat& y, const arma::mat& x)
 
 arma::mat polynomialRegression(const arma::mat& y, const arma::mat& x, int maxorder, int minorder)
 {
-  arma::mat xx(x.n_rows, maxorder-minorder);
-  for (int i=0; i<maxorder-minorder; i++)
-    xx.col(i)=pow(x, minorder+i);
+  arma::mat xx(x.n_rows, arma::uword(maxorder-minorder) );
+  for (arma::uword i=0; i<arma::uword(maxorder-minorder); i++)
+    xx.col(i)=pow(x, arma::uword(minorder)+i);
   return linearRegression(y, xx);
 }
 
 double evalPolynomial(double x, const arma::mat& coeffs)
 {
   double y=0;
-  for (int k=0; k<coeffs.n_elem; k++)
+  for (arma::uword k=0; k<coeffs.n_elem; k++)
   {
-    int p=coeffs.n_elem-k-1;
+    arma::uword p=coeffs.n_elem-k-1;
     y+=coeffs(k)*pow(x,p);
   }
   return y;
@@ -158,7 +166,7 @@ RegressionModel::~RegressionModel()
 {
 }
 
-void RegressionModel::getParameters(double* params) const
+void RegressionModel::getParameters(double*) const
 {
   throw insight::Exception("not implemented!");
 }
@@ -172,7 +180,7 @@ double RegressionModel::computeQuality(const arma::mat& y, const arma::mat& x) c
 {
   double q=0.0;
   arma::mat w=weights(x);
-  for (int r=0; r<y.n_rows; r++)
+  for (arma::uword r=0; r<y.n_rows; r++)
   {
     q +=  w(r) * pow(norm( y.row(r) - evaluateObjective(x.row(r)), 2 ), 2);
   }
@@ -594,38 +602,100 @@ arma::mat nonlinearMinimizeND(const ObjectiveND& model, const arma::mat& x0, dou
 
 arma::mat movingAverage(const arma::mat& timeProfs, double fraction, bool first_col_is_time, bool centerwindow)
 {
-  if (first_col_is_time && timeProfs.n_cols<2)
-    throw insight::Exception("movingAverage: first column specified as time but only dataset with "
+  std::ostringstream msg;
+  msg<<"Computing moving average for "
+       "t="<<valueList_to_string(timeProfs.col(0))<<" and "
+       "y="<<valueList_to_string(timeProfs.cols(1,timeProfs.n_cols-1))<<
+       " with fraction="<<fraction<<", first_col_is_time="<<first_col_is_time<<" and centerwindow="<<centerwindow;
+  CurrentExceptionContext ce(msg.str());
+
+  if (!first_col_is_time)
+    throw insight::Exception("Internal error: moving average without time column is currently unsupported!");
+
+  if (timeProfs.n_cols<2)
+    throw insight::Exception("movingAverage: only dataset with "
       +lexical_cast<std::string>(timeProfs.n_cols)+" columns given. There is no data to average.");
-  
+
   if (timeProfs.n_rows>1)
   {
-    int n_raw=timeProfs.n_rows;
-    int window=std::min(n_raw, std::max(2, int( double(n_raw)*fraction )) );
-    int window_ofs=window;
-    if (centerwindow) window_ofs=window/2;
-    int n_avg=n_raw-window;
-    
+    arma::uword n_raw=timeProfs.n_rows;
+
+    double x0=arma::min(timeProfs.col(0));
+    double dx_raw=arma::max(timeProfs.col(0))-x0;
+
+//    std::cout<<"mvg avg: range ["<<x0<<":"<<timeProfs.col(0).max()<<"]"<<std::endl;
+
+    double window=fraction*dx_raw;
+    double avgdx=dx_raw/double(n_raw);
+
+    // number of averages to compute
+    arma::uword n_avg=std::min(n_raw, std::max(arma::uword(2), arma::uword((dx_raw-window)/avgdx) ));
+//    window=n_avg*avgdx;
+
+    double window_ofs=window;
+    if (centerwindow)
+    {
+        window_ofs=window/2.0;
+    }
+
     arma::mat result=zeros(n_avg, timeProfs.n_cols);
     
-    for (int i=window_ofs; i<n_avg+window_ofs; i++)
+    for (arma::uword i=0; i<n_avg; i++)
     {
-      int ri=i-window_ofs;
-      int from=i-window_ofs, to=from+window;
-//       cout<<i<<" "<<n_avg<<" "<<n_raw<<" "<<from<<" "<<to<<endl;
-      int j0=0;
-      if (first_col_is_time)
-      {
-	j0=1;
-	result(ri,0)=timeProfs(i, 0); // copy time
-      }
-      for (int j=j0; j<timeProfs.n_cols; j++)
-	result(ri, j)=mean(timeProfs.rows(from, to).col(j));
+        double x = x0 + window_ofs + double(i)*avgdx;
+
+        double from = x - window_ofs, to = from + window;
+
+//        std::cout<<"avg from "<<from<<" to "<<to<<std::endl;
+
+        arma::uword j0=0;
+        if (first_col_is_time)
+        {
+            j0=1;
+            result(i,0)=x;
+        }
+        arma::uvec indices = arma::find( (timeProfs.col(0)>=from) && (timeProfs.col(0)<=to) );
+        arma::mat selrows=timeProfs.rows( indices );
+        if (selrows.n_rows==0) // nothing selected: take the closest row
+        {
+            indices = arma::sort_index(arma::mat(pow(timeProfs.col(0) - 0.5*(from+to), 2)));
+            selrows=timeProfs.row( indices(0) );
+        }
+//        if (i==n_avg-1) std::cout<<"sel rows="<<selrows<<std::endl;
+
+        if (selrows.n_rows==1)
+        {
+            for (arma::uword j=j0; j<timeProfs.n_cols; j++)
+            {
+               result(i, j) = arma::as_scalar(selrows.col(j));
+            }
+        }
+        else
+        {
+
+            arma::mat xcol=selrows.col(0);
+            for (arma::uword j=j0; j<timeProfs.n_cols; j++)
+            {
+              arma::mat ccol=selrows.col(j);
+              double I=0;
+              for (arma::uword k=1; k<xcol.n_rows; k++)
+              {
+                I+=0.5*(ccol(k)+ccol(k-1))*(xcol(k)-xcol(k-1));
+              }
+              result(i, j) = I/(xcol.max()-xcol.min());
+
+//              if (i==n_avg-1)
+//              {
+//                  std::cout<<j<<" >> "<<result(i, j)<<" "<<ccol.min()<<" "<<ccol.max()<<std::endl;
+//              }
+            }
+        }
     }
     
     return result;
     
-  } else 
+  }
+  else
   {
     return timeProfs;
   }
@@ -641,11 +711,34 @@ arma::mat sortedByCol(const arma::mat&m, int c)
   return xy;
 }
 
+arma::mat filterDuplicates(const arma::mat&m)
+{
+
+  arma::mat xy = arma::zeros(m.n_rows, m.n_cols);
+
+  xy.row(0)=m.row(0);
+
+  arma::uword j=1;
+  for (arma::uword r=1; r<m.n_rows; r++)
+  {
+    if (arma::norm(m.row(r)-m.row(j-1),2) > 1e-8)
+    {
+      xy.row(j++)=m.row(r);
+    }
+  }
+  xy.resize(j, m.n_cols);
+
+  std::cout<<xy.row(0)<<std::endl<<xy.row(xy.n_rows-1)<<std::endl;
+
+  return xy;
+}
+
+
 void Interpolator::initialize(const arma::mat& xy_us, bool force_linear)
 {
     try
     {
-        arma::mat xy = sortedByCol(xy_us, 0);
+        arma::mat xy = filterDuplicates(sortedByCol(xy_us, 0));
         xy_=xy;
 
         if (xy.n_cols<2)

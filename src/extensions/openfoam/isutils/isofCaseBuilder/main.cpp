@@ -23,7 +23,7 @@
 #include <QDir>
 #include <QSplashScreen>
 #include <QDialog>
-#include <QtGui/QApplication>
+#include <QApplication>
 #include <QMessageBox>
 
 #ifndef Q_MOC_RUN
@@ -51,13 +51,13 @@ public:
   ISOFApp ( int &argc, char **argv )
     : QApplication ( argc, argv )
   {
-    QFile file(":/stylesheet.css");
-    if(file.open(QIODevice::ReadOnly | QIODevice::Text))
-    {
-  //      qDebug()<<"loading stylesheet";
-        setStyleSheet(file.readAll());
-        file.close();
-    }
+//    QFile file(":/stylesheet.css");
+//    if(file.open(QIODevice::ReadOnly | QIODevice::Text))
+//    {
+//  //      qDebug()<<"loading stylesheet";
+//        setStyleSheet(file.readAll());
+//        file.close();
+//    }
   }
 
   ~ISOFApp( )
@@ -167,7 +167,7 @@ int main ( int argc, char** argv )
         isofCaseBuilderWindow window;
         if ( vm.count ( "input-file" ) )
         {
-            BOOST_FOREACH( const std::string& fn, vm["input-file"].as<StringList>())
+            for ( const std::string& fn: vm["input-file"].as<StringList>())
             {
                 if (!boost::filesystem::exists(fn))
                 {
@@ -177,12 +177,13 @@ int main ( int argc, char** argv )
                     exit(-1);
                 }
                 window.loadFile ( fn, vm.count ( "skipbcs" ) );
+
             }
             
             if (vm.count("bool"))
             {
                 StringList sets=vm["bool"].as<StringList>();
-                BOOST_FOREACH(const string& s, sets)
+                for (const string& s: sets)
                 {
                     std::vector<std::string> pair;
                     insight::ParameterSet& parameters = split_and_check(window, pair, s);
@@ -195,7 +196,7 @@ int main ( int argc, char** argv )
             if (vm.count("string"))
             {
                 StringList sets=vm["string"].as<StringList>();
-                BOOST_FOREACH(const string& s, sets)
+                for (const string& s: sets)
                 {
                     std::vector<std::string> pair;
                     insight::ParameterSet& parameters = split_and_check(window, pair, s);
@@ -207,7 +208,7 @@ int main ( int argc, char** argv )
             if (vm.count("selection"))
             {
                 StringList sets=vm["selection"].as<StringList>();
-                BOOST_FOREACH(const string& s, sets)
+                for (const string& s: sets)
                 {
                     std::vector<std::string> pair;
                     insight::ParameterSet& parameters = split_and_check(window, pair, s);
@@ -219,7 +220,7 @@ int main ( int argc, char** argv )
             if (vm.count("path"))
             {
                 StringList sets=vm["path"].as<StringList>();
-                BOOST_FOREACH(const string& s, sets)
+                for (const string& s: sets)
                 {
                     std::vector<std::string> pair;
                     insight::ParameterSet& parameters = split_and_check(window, pair, s);
@@ -231,7 +232,7 @@ int main ( int argc, char** argv )
             if (vm.count("double"))
             {
                 StringList sets=vm["double"].as<StringList>();
-                BOOST_FOREACH(const string& s, sets)
+                for (const string& s: sets)
                 {
                     std::vector<std::string> pair;
                     insight::ParameterSet& parameters = split_and_check(window, pair, s);
@@ -244,7 +245,7 @@ int main ( int argc, char** argv )
             if (vm.count("vector"))
             {
                 StringList sets=vm["vector"].as<StringList>();
-                BOOST_FOREACH(const string& s, sets)
+                for (const string& s: sets)
                 {
                     std::vector<std::string> pair;
                     insight::ParameterSet& parameters = split_and_check(window, pair, s);
@@ -258,7 +259,7 @@ int main ( int argc, char** argv )
             if (vm.count("int"))
             {
                 StringList sets=vm["int"].as<StringList>();
-                BOOST_FOREACH(const string& s, sets)
+                for (const string& s: sets)
                 {
                     std::vector<std::string> pair;
                     insight::ParameterSet& parameters = split_and_check(window, pair, s);
@@ -270,7 +271,7 @@ int main ( int argc, char** argv )
         
             if ( vm.count ( "batch" ) )
             {
-                boost::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles;
+                std::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles;
                 
                 if ( vm.count ( "write-only" ) )
                 {
@@ -278,7 +279,7 @@ int main ( int argc, char** argv )
                     //(vm["write-only"].as<std::vector<boost::filesystem::path> >()) );
                     StringList paths = vm["write-only"].as<StringList>();
                     copy(paths.begin(), paths.end(), std::back_inserter(*restrictToFiles));
-                    BOOST_FOREACH(const boost::filesystem::path& f, *restrictToFiles)
+                    for (const boost::filesystem::path& f: *restrictToFiles)
                      std::cout<<f<<std::endl;
                 }
                 

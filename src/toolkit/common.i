@@ -1,13 +1,17 @@
 %include <std_string.i>
 %include <std_vector.i>
 %include <std_map.i>
+%include <std_shared_ptr.i>
 %include <boost_shared_ptr.i>
 
 %shared_ptr(insight::Image);
 %shared_ptr(insight::Comment);
 %shared_ptr(insight::Chart);
+%shared_ptr(insight::PolarChart);
 %shared_ptr(insight::ScalarResult);
+%shared_ptr(insight::VectorResult);
 %shared_ptr(insight::NumericalResult<double> );
+%shared_ptr(insight::NumericalResult<arma::mat> );
 %shared_ptr(insight::TabularResult);
 %shared_ptr(insight::AttributeTableResult);
 %shared_ptr(insight::ResultSection);

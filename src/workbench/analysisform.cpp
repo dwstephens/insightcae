@@ -19,6 +19,7 @@
  */
 
 #ifndef Q_MOC_RUN
+#include "base/boost_include.h"
 #include "base/resultset.h"
 #endif
 
@@ -33,11 +34,17 @@
 #include <QScrollBar>
 #include "email.h"
 
+#include "ui_xml_display.h"
+
+#include <cstdlib>
+
+#include "of_clean_case.h"
+
 int metaid1=qRegisterMetaType<insight::ParameterSet>("insight::ParameterSet");
 int metaid2=qRegisterMetaType<insight::ResultSetPtr>("insight::ResultSetPtr");
 
 
-AnalysisWorker::AnalysisWorker(const boost::shared_ptr<insight::Analysis>& analysis)
+AnalysisWorker::AnalysisWorker(const std::shared_ptr<insight::Analysis>& analysis)
 : analysis_(analysis)
 {}
 
@@ -51,7 +58,9 @@ void AnalysisWorker::doWork(insight::ProgressDisplayer* pd)
 AnalysisForm::AnalysisForm(QWidget* parent, const std::string& analysisName)
 : QMdiSubWindow(parent),
   analysisName_(analysisName),
-  executionPathParameter_(".", "Directory to store data files during analysis.\nLeave empty for temporary storage.")
+  executionPathParameter_( boost::filesystem::path("."),
+                           "Directory to store data files during analysis.\nLeave empty for temporary storage."),
+  pack_parameterset_(true)
 {
 
     // load default parameters
@@ -73,13 +82,13 @@ AnalysisForm::AnalysisForm(QWidget* parent, const std::string& analysisName)
     QVBoxLayout* vbl=new QVBoxLayout;
     hbl->addLayout(vbl);
     save_log_btn_=new QPushButton("Save...");
-    connect(save_log_btn_, SIGNAL(clicked()), this, SLOT(saveLog()));
+    connect(save_log_btn_, &QPushButton::clicked, this, &AnalysisForm::saveLog);
     send_log_btn_=new QPushButton("Email...");
-    connect(send_log_btn_, SIGNAL(clicked()), this, SLOT(sendLog()));
+    connect(send_log_btn_, &QPushButton::clicked, this, &AnalysisForm::sendLog);
     clear_log_btn_=new QPushButton("Clear");
-    connect(clear_log_btn_, SIGNAL(clicked()), this, SLOT(clearLog()));
+    connect(clear_log_btn_, &QPushButton::clicked, this, &AnalysisForm::clearLog);
     auto_scroll_down_btn_=new QPushButton("Auto Scroll");
-    connect(auto_scroll_down_btn_, SIGNAL(clicked()), this, SLOT(autoScrollLog()));
+    connect(auto_scroll_down_btn_, &QPushButton::clicked, this, &AnalysisForm::autoScrollLog);
     vbl->addWidget(save_log_btn_);
     vbl->addWidget(send_log_btn_);
     vbl->addWidget(clear_log_btn_);
@@ -88,31 +97,43 @@ AnalysisForm::AnalysisForm(QWidget* parent, const std::string& analysisName)
     ui->runTabLayout->addWidget(spl);
     
     cout_log_ = new Q_DebugStream(std::cout);
-    connect(cout_log_, SIGNAL(appendText(const QString&)), log_, SLOT(appendPlainText(const QString&)));
+    connect(cout_log_, &Q_DebugStream::appendText, log_, &QPlainTextEdit::appendPlainText);
     cerr_log_ = new Q_DebugStream(std::cerr);
-    connect(cerr_log_, SIGNAL(appendText(const QString&)), log_, SLOT(appendPlainText(const QString&)));
+    connect(cerr_log_, &Q_DebugStream::appendText, log_, &QPlainTextEdit::appendPlainText);
 
     this->setWindowTitle(analysisName_.c_str());
-    connect(ui->runBtn, SIGNAL(clicked()), this, SLOT(onRunAnalysis()));
-    connect(ui->killBtn, SIGNAL(clicked()), this, SLOT(onKillAnalysis()));
+    connect(ui->runBtn, &QPushButton::clicked, this, &AnalysisForm::onRunAnalysis);
+    connect(ui->killBtn, &QPushButton::clicked, this, &AnalysisForm::onKillAnalysis);
 
-    connect(ui->saveParamBtn, SIGNAL(clicked()), this, SLOT(onSaveParameters()));
-    connect(ui->loadParamBtn, SIGNAL(clicked()), this, SLOT(onLoadParameters()));
+    insight::ParameterSet_VisualizerPtr viz;
+    insight::ParameterSet_ValidatorPtr vali;
 
-    connect(ui->createReportBtn, SIGNAL(clicked()), this, SLOT(onCreateReport()));
+    try {
+        viz = insight::Analysis::visualizer(analysisName_);
+    } catch (insight::Exception e)
+    { /* ignore, if non-existent */ }
 
+    try {
+        vali = insight::Analysis::validator(analysisName_);
+    } catch (insight::Exception e)
+    { /* ignore, if non-existent */ }
 
-    peditor_=new ParameterEditorWidget(parameters_, ui->inputTab);
+    peditor_=new ParameterEditorWidget(parameters_, ui->inputTab, vali, viz);
     ui->inputTabLayout->addWidget(peditor_);
     peditor_->insertParameter("execution directory", executionPathParameter_);
-    QObject::connect(this, SIGNAL(apply()), peditor_, SLOT(onApply()));
-    QObject::connect(this, SIGNAL(update()), peditor_, SLOT(onUpdate()));
+    QObject::connect(this, &AnalysisForm::apply, peditor_, &ParameterEditorWidget::onApply);
+    QObject::connect(this, &AnalysisForm::update, peditor_, &ParameterEditorWidget::onUpdate);
+    connect(peditor_, &ParameterEditorWidget::parameterSetChanged,
+            this, &AnalysisForm::onConfigModification);
 
     rtroot_=new QTreeWidgetItem(0);
     rtroot_->setText(0, "Results");
     ui->resultTree->setColumnCount(3);
     ui->resultTree->setHeaderLabels( QStringList() << "Result Element" << "Description" << "Current Value" );
     ui->resultTree->addTopLevelItem(rtroot_);
+
+    QSettings settings("silentdynamics", "workbench");
+    peditor_->restoreState(settings.value("parameterEditor").toByteArray());
 }
 
 AnalysisForm::~AnalysisForm()
@@ -122,27 +143,253 @@ AnalysisForm::~AnalysisForm()
     delete ui;
 }
 
+void AnalysisForm::insertMenu(QMenuBar* mainMenu)
+{
+    workbench::WidgetWithDynamicMenuEntries::insertMenu(mainMenu);
+
+    menu_parameters_=mainMenu_->addMenu("&Parameters");
+
+    if (!act_save_) act_save_=new QAction("&Save parameter set", this);
+    menu_parameters_->addAction( act_save_ );
+    connect( act_save_, &QAction::triggered,
+             this, &AnalysisForm::onSaveParameters );
+
+    if (!act_save_as_) act_save_as_=new QAction("&Save parameter set as...", this);
+    menu_parameters_->addAction( act_save_as_ );
+    connect( act_save_as_, &QAction::triggered,
+             this, &AnalysisForm::onSaveParametersAs );
+
+    if (!act_merge_) act_merge_=new QAction("&Merge other parameter set into current...", this);
+    menu_parameters_->addAction( act_merge_ );
+    connect( act_merge_, &QAction::triggered, this, &AnalysisForm::onLoadParameters );
+
+    if (!act_param_show_) act_param_show_=new QAction("&Show in XML format", this);
+    menu_parameters_->addAction( act_param_show_ );
+    connect( act_param_show_, &QAction::triggered, this, &AnalysisForm::onShowParameterXML );
+
+
+    menu_actions_=mainMenu_->addMenu("&Actions");
+
+    if (!act_run_) act_run_=new QAction("&Run Analysis", this);
+    menu_actions_->addAction( act_run_ );
+    connect( act_run_, &QAction::triggered, this, &AnalysisForm::onRunAnalysis );
+    if (!act_kill_) act_kill_=new QAction("&Stop Analysis", this);
+    menu_actions_->addAction( act_kill_ );
+    connect( act_kill_, &QAction::triggered, this, &AnalysisForm::onKillAnalysis );
+
+    menu_results_=mainMenu_->addMenu("&Results");
+
+    if (!act_save_rpt_) act_save_rpt_=new QAction("Create &report...", this);
+    menu_results_->addAction( act_save_rpt_ );
+    connect( act_save_rpt_, &QAction::triggered, this, &AnalysisForm::onCreateReport );
+
+    menu_tools_=mainMenu_->addMenu("&Tools");
+    menu_tools_of_=menu_tools_->addMenu("&OpenFOAM");
+    if (!act_tool_of_paraview_) act_tool_of_paraview_=new QAction("Start ParaView in execution directory", this);
+    menu_tools_of_->addAction( act_tool_of_paraview_ );
+    connect( act_tool_of_paraview_, &QAction::triggered, this, &AnalysisForm::onStartPV );
+    if (!act_tool_of_clean_) act_tool_of_clean_=new QAction("Clean OpenFOAM case...", this);
+    menu_tools_of_->addAction( act_tool_of_clean_ );
+    connect( act_tool_of_clean_, &QAction::triggered, this, &AnalysisForm::onCleanOFC );
+}
+
+void AnalysisForm::removeMenu()
+{
+    if (mainMenu_)
+    {
+        menu_parameters_->removeAction(act_save_); act_save_->disconnect();
+        menu_parameters_->removeAction(act_save_as_); act_save_as_->disconnect();
+        menu_parameters_->removeAction(act_merge_); act_merge_->disconnect();
+        menu_parameters_->removeAction(act_param_show_); act_param_show_->disconnect();
+
+        menu_actions_->removeAction(act_run_); act_run_->disconnect();
+        menu_actions_->removeAction(act_kill_); act_kill_->disconnect();
+
+        menu_results_->removeAction(act_save_rpt_); act_save_rpt_->disconnect();
+
+        menu_tools_of_->removeAction(act_tool_of_paraview_); act_tool_of_paraview_->disconnect();
+        menu_tools_of_->removeAction(act_tool_of_clean_); act_tool_of_clean_->disconnect();
+
+        QAction *ma;
+        ma = menu_results_->menuAction();
+        ma->disconnect();
+        mainMenu_->removeAction(ma);
+        //menu_results_->deleteLater();
+
+        ma = menu_parameters_->menuAction();
+        ma->disconnect();
+        mainMenu_->removeAction(ma);
+        //menu_parameters_->deleteLater();
+
+        ma = menu_actions_->menuAction();
+        ma->disconnect();
+        mainMenu_->removeAction(ma);
+        //menu_actions_->deleteLater();
+
+        ma = menu_tools_of_->menuAction();
+        ma->disconnect();
+        menu_tools_->removeAction(ma);
+
+        ma = menu_tools_->menuAction();
+        ma->disconnect();
+        mainMenu_->removeAction(ma);
+    }
+    workbench::WidgetWithDynamicMenuEntries::removeMenu();
+}
+
+
+
+void AnalysisForm::closeEvent(QCloseEvent * event)
+{
+    if (is_modified_)
+    {
+      auto answer=QMessageBox::question(this, "Parameters unsaved",
+                                        "The current parameters have been modified without saving.\n"
+                                        "Do you wish to save them before closing?",
+                                        QMessageBox::Yes|QMessageBox::No|QMessageBox::Cancel);
+      if (answer==QMessageBox::Yes)
+      {
+        bool cancelled=false;
+        saveParameters(&cancelled);
+        if (cancelled) event->ignore();
+      }
+      else if (answer==QMessageBox::Cancel)
+      {
+        event->ignore();
+      }
+    }
+
+    if (event->isAccepted())
+    {
+      QSettings settings("silentdynamics", "workbench");
+      settings.setValue("parameterEditor", peditor_->saveState());
+
+      QMdiSubWindow::closeEvent(event);
+    }
+
+    if (event->isAccepted())
+    {
+      removeMenu();
+    }
+
+}
+
+
 void AnalysisForm::onSaveParameters()
+{
+  saveParameters();
+}
+
+
+void AnalysisForm::saveParameters(bool *cancelled)
+{
+  if (ist_file_.empty())
+  {
+    saveParametersAs(cancelled);
+  }
+  else
+  {
+    if (pack_parameterset_) parameters_.packExternalFiles();
+    parameters_.saveToFile(ist_file_, analysisName_);
+    is_modified_=false;
+  }
+}
+
+void AnalysisForm::onSaveParametersAs()
+{
+  saveParametersAs();
+}
+
+
+
+void AnalysisForm::saveParametersAs(bool *cancelled)
 {
 //   emit apply();
 
-  QString fn = QFileDialog::getSaveFileName(this, "Save Parameters", QString(), "Insight parameter sets (*.ist)");
-  if (!fn.isEmpty())
+  QFileDialog fd(this);
+  fd.setOption(QFileDialog::DontUseNativeDialog, true);
+  fd.setWindowTitle("Save Parameters");
+  QStringList filters;
+  filters << "Insight parameter sets (*.ist)";
+  fd.setNameFilters(filters);
+
+  QCheckBox* cb = new QCheckBox;
+  cb->setText("Pack: embed externally referenced files into parameterset");
+  QGridLayout *fdl = static_cast<QGridLayout*>(fd.layout());
+  int last_row=fdl->rowCount(); // id of new row below
+  fdl->addWidget(cb, last_row, 0, 1, -1);
+
+  cb->setChecked(pack_parameterset_);
+
+  if (fd.exec() == QDialog::Accepted)
   {
+    QString fn = fd.selectedFiles()[0];
+    pack_parameterset_ = cb->isChecked();
+
 //     parameters_.saveToFile(fn.toStdString(), analysis_->type());
-    parameters_.saveToFile(fn.toStdString(), analysisName_);
+    ist_file_=fn.toStdString();
+
+    saveParameters(cancelled);
+
+    if (cancelled) *cancelled=false;
   }
+  else
+  {
+    if (cancelled) *cancelled=true;
+  }
+}
+
+void AnalysisForm::loadParameters(const boost::filesystem::path& fp)
+{
+  ist_file_=fp;
+  parameters_.readFromFile(fp);
 }
 
 void AnalysisForm::onLoadParameters()
 {
+  if (is_modified_)
+  {
+    auto answer = QMessageBox::question(this, "Parameters unsaved", "The current parameter set is unsaved and will be overwritten.\n"
+                                                  "Do you wish to save them before continue?",
+                      QMessageBox::Yes|QMessageBox::No|QMessageBox::Cancel);
+    if (answer == QMessageBox::Yes)
+    {
+      onSaveParameters();
+    }
+    else if (answer == QMessageBox::Cancel)
+    {
+      return;
+    }
+  }
+
   QString fn = QFileDialog::getOpenFileName(this, "Open Parameters", QString(), "Insight parameter sets (*.ist)");
   if (!fn.isEmpty())
   {
-    parameters_.readFromFile(fn.toStdString());
+    loadParameters(fn.toStdString());
     emit update();
   }
 }
+
+void AnalysisForm::onShowParameterXML()
+{
+    QDialog *widget = new QDialog(this);
+    Ui::XML_Display ui;
+    ui.setupUi(widget);
+
+    emit apply(); // apply all changes into parameter set
+    boost::filesystem::path exePath = executionPathParameter_();
+    std::ostringstream os;
+    parameters_.saveToStream(os, exePath, analysisName_);
+    ui.textDisplay->setText(QString::fromStdString(os.str()));
+
+    widget->exec();
+}
+
+void AnalysisForm::onConfigModification()
+{
+  is_modified_=true;
+}
+
 
 void AnalysisForm::onRunAnalysis()
 {
@@ -182,12 +429,15 @@ void AnalysisForm::onRunAnalysis()
         AnalysisWorker *worker = new AnalysisWorker(analysis_);
         worker->moveToThread(&workerThread_);
         
-        connect(this, SIGNAL(runAnalysis(insight::ProgressDisplayer*)),
-                worker, SLOT(doWork(insight::ProgressDisplayer*)));
-        connect(worker, SIGNAL(resultReady(insight::ResultSetPtr)), this, SLOT(onResultReady(insight::ResultSetPtr)));
-        
-        connect(worker, SIGNAL(finished()), &workerThread_, SLOT(quit()));
-        connect(&workerThread_, SIGNAL(finished()), worker, SLOT(deleteLater()));
+        connect(this, &AnalysisForm::runAnalysis,
+                worker, &AnalysisWorker::doWork);
+        connect(worker, &AnalysisWorker::resultReady,
+                this, &AnalysisForm::onResultReady);
+        connect(worker, &AnalysisWorker::finished,
+                &workerThread_, &QThread::quit);
+        connect(&workerThread_, &QThread::finished,
+                worker, &AnalysisWorker::deleteLater);
+
         workerThread_.start();
 
         ui->tabWidget->setCurrentWidget(ui->runTab);
@@ -222,6 +472,9 @@ void AnalysisForm::onResultReady(insight::ResultSetPtr results)
   ui->tabWidget->setCurrentWidget(ui->outputTab);
 
   QMessageBox::information(this, "Finished!", "The analysis has finished");
+
+  workerThread_.quit();
+  workerThread_.wait();
 }
 
 void AnalysisForm::onCreateReport()
@@ -237,8 +490,9 @@ void AnalysisForm::onCreateReport()
       this, 
     "Save Report",
     QString(executionPathParameter_().c_str()), 
-    "PDF file (*.pdf)|LaTeX file (*.tex)"
+    "PDF file (*.pdf);;LaTeX file (*.tex)"
   );
+
   if (!fn.isEmpty())
   {
     boost::filesystem::path outpath=fn.toStdString();
@@ -262,13 +516,40 @@ void AnalysisForm::onCreateReport()
   }
 }
 
+void AnalysisForm::onStartPV()
+{
+  emit apply(); // apply all changes into parameter set
+  boost::filesystem::path exePath = executionPathParameter_();
+  ::system( boost::str( boost::format
+        ("cd %s; isPV.py &" ) % exePath.string()
+   ).c_str() );
+}
+
+void AnalysisForm::onCleanOFC()
+{
+  const insight::OFEnvironment* ofc = nullptr;
+  if (parameters_.contains("run/OFEname"))
+  {
+    std::string ofename=parameters_.getString("run/OFEname");
+    ofc=&(insight::OFEs::get(ofename));
+  }
+  else
+  {
+    ofc=&(insight::OFEs::getCurrentOrPreferred());
+  }
+
+  OFCleanCaseDialog dlg(*ofc, executionPathParameter_(), this);
+  dlg.exec();
+}
+
+
 void AnalysisForm::saveLog()
 {
     QString fn=QFileDialog::getSaveFileName(
         this, 
         "Save Log to file",
         "",
-        "*.txt"
+        "Log file (*.txt)"
     );
     
     if (!fn.isEmpty())

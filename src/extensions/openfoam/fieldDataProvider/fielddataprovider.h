@@ -17,8 +17,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef FOAM_DATAINTERPOLATOR_H
-#define FOAM_DATAINTERPOLATOR_H
+#ifndef FOAM_FIELDDATAPROVIDER_H
+#define FOAM_FIELDDATAPROVIDER_H
 
 #include "fvCFD.H"
 
@@ -30,6 +30,8 @@
 #include "boost/ptr_container/ptr_map.hpp"
 
 #include "vectorspacebase.h"
+
+#include "uniof.h"
 
 namespace Foam 
 {
@@ -87,6 +89,21 @@ public:
   virtual void writeSup(Ostream& os) const;
   
   void writeEntry(const word& key, Ostream& os) const;
+
+  //- Map (and resize as needed) from self given a mapping object
+  virtual void autoMap
+  (
+      const fvPatchFieldMapper&
+  );
+
+
+  //- Reverse map the given fvPatchField onto this fvPatchField
+  virtual void rmap
+  (
+      const FieldDataProvider<T>&,
+      const labelList&
+  );
+
 };
 
 
@@ -106,7 +123,8 @@ public:
   
   uniformField(Istream& is);
   uniformField(const uniformField<T>& o);
-  
+  uniformField(const T& uv);
+
   virtual tmp<Field<T> > atInstant(int i, const pointField& target) const;
   virtual autoPtr<FieldDataProvider<T> > clone() const;
 };
@@ -133,6 +151,20 @@ public:
   
   virtual tmp<Field<T> > atInstant(int i, const pointField& target) const;
   virtual autoPtr<FieldDataProvider<T> > clone() const;
+
+  //- Map (and resize as needed) from self given a mapping object
+  void autoMap
+  (
+      const fvPatchFieldMapper&
+  );
+
+
+  //- Reverse map the given fvPatchField onto this fvPatchField
+  void rmap
+  (
+      const FieldDataProvider<T>&,
+      const labelList&
+  );
 };
 
 

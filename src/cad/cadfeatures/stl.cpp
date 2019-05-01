@@ -38,11 +38,16 @@
 #include <TopoDS_Shell.hxx>
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Wire.hxx>
-
+#include <Graphic3d_MaterialAspect.hxx>
+#include <AIS_ColoredShape.hxx>
+#include <TColStd_HPackedMapOfInteger.hxx>
+#include <Geom_SphericalSurface.hxx>
 
 #include "base/tools.h"
 #include "base/boost_include.h"
 #include <boost/spirit/include/qi.hpp>
+
+#include "transform.h"
 
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
@@ -65,7 +70,10 @@ addToFactoryTable(Feature, STL);
 size_t STL::calcHash() const
 {
   ParameterListHash h;
+  h+=this->type();
   h+=fname_;
+  if (trsf_) h+=*trsf_;
+  if (other_trsf_) h+=*other_trsf_;
   return h.getHash();
 }
 
@@ -76,13 +84,24 @@ STL::STL()
 
 
 
-STL::STL
-(
-  const boost::filesystem::path& fname
-)
-: fname_(fname)
-{
-}
+STL::STL(const boost::filesystem::path& fname)
+    : fname_(fname)
+{}
+
+
+
+
+STL::STL(const boost::filesystem::path& fname, const gp_Trsf& trsf)
+    : fname_(fname), trsf_(new gp_Trsf(trsf))
+{}
+
+
+
+
+STL::STL(const boost::filesystem::path& fname, FeaturePtr other_trsf)
+    : fname_(fname), other_trsf_(other_trsf)
+{}
+
 
 
 
@@ -97,75 +116,78 @@ FeaturePtr STL::create
 
 
 
+FeaturePtr STL::create_trsf
+(
+    const boost::filesystem::path& fname,
+    gp_Trsf trsf
+)
+{
+    return FeaturePtr(new STL(fname, trsf));
+}
+
+
+
+
+FeaturePtr STL::create_other
+(
+    const boost::filesystem::path& fname,
+    FeaturePtr other_trsf
+)
+{
+    return FeaturePtr(new STL(fname, other_trsf));
+}
+
+
+
+
 void STL::build()
 {
-  ExecTimer t("STL::build() ["+featureSymbolName()+"]");
+    ExecTimer t("STL::build() ["+featureSymbolName()+"]");
 
-
-  Handle(Poly_Triangulation) aMesh = RWStl::ReadFile (fname_.c_str());
-  if (aMesh.IsNull())
-  {
-    return Standard_False;
-  }
-
-  TopoDS_Vertex aTriVertexes[3];
-  TopoDS_Face aFace;
-  TopoDS_Wire aWire;
-  BRepBuilderAPI_Sewing aSewingTool;
-  aSewingTool.Init (1.0e-06, Standard_True);
-
-  TopoDS_Compound aComp;
-  BRep_Builder BuildTool;
-  BuildTool.MakeCompound (aComp);
-
-  const TColgp_Array1OfPnt& aNodes = aMesh->Nodes();
-  const Poly_Array1OfTriangle& aTriangles = aMesh->Triangles();
-  for (Standard_Integer aTriIdx  = aTriangles.Lower();
-                        aTriIdx <= aTriangles.Upper();
-                      ++aTriIdx)
-  {
-    const Poly_Triangle& aTriangle = aTriangles(aTriIdx);
-
-    Standard_Integer anId[3];
-    aTriangle.Get(anId[0], anId[1], anId[2]);
-
-    const gp_Pnt& aPnt1 = aNodes (anId[0]);
-    const gp_Pnt& aPnt2 = aNodes (anId[1]);
-    const gp_Pnt& aPnt3 = aNodes (anId[2]);
-    if ((!(aPnt1.IsEqual (aPnt2, 0.0)))
-     && (!(aPnt1.IsEqual (aPnt3, 0.0))))
+    if (!cache.contains(hash()))
     {
-      aTriVertexes[0] = BRepBuilderAPI_MakeVertex (aPnt1);
-      aTriVertexes[1] = BRepBuilderAPI_MakeVertex (aPnt2);
-      aTriVertexes[2] = BRepBuilderAPI_MakeVertex (aPnt3);
+        Handle(Poly_Triangulation) aSTLMesh = RWStl::ReadFile (fname_.c_str());
 
-      aWire = BRepBuilderAPI_MakePolygon (aTriVertexes[0], aTriVertexes[1], aTriVertexes[2], Standard_True);
-      if (!aWire.IsNull())
-      {
-        aFace = BRepBuilderAPI_MakeFace (aWire);
-        if (!aFace.IsNull())
+        if (trsf_ || other_trsf_)
         {
-          BuildTool.Add (aComp, aFace);
+            gp_Trsf tr;
+            if (trsf_)
+            {
+                tr = *trsf_;
+            }
+            else if (other_trsf_)
+            {
+                tr = Transform::calcTrsfFromOtherTransformFeature(other_trsf_);
+            }
+
+            for (int i=1; i<=aSTLMesh->NbNodes();i++)
+            {
+                aSTLMesh->ChangeNode(i).Transform(tr);
+            }
         }
-      }
+
+        Bnd_Box bb;
+        for (int i=1; i<=aSTLMesh->NbNodes();i++)
+        {
+            bb.Add(aSTLMesh->Node(i));
+        }
+        double r=bb.CornerMax().Distance(bb.CornerMin()) /2.;
+        gp_Pnt ctr(0.5*(bb.CornerMin().XYZ()+bb.CornerMax().XYZ()));
+
+        TopoDS_Face aFace;
+        BRep_Builder aB;
+        //  aB.MakeFace(aFace, aSTLMesh);
+        aB.MakeFace(aFace, Handle_Geom_Surface(new Geom_SphericalSurface(gp_Sphere(gp_Ax3(ctr, gp::DZ()), r))), Precision::Confusion());
+        aB.UpdateFace(aFace, aSTLMesh);
+
+        setShape( aFace );
+
+        cache.insert(shared_from_this());
     }
-  }
-
-
-//  aSewingTool.Load( aComp );
-//  aSewingTool.Perform();
-//  aShape = aSewingTool.SewedShape();
-//  if ( aShape.IsNull() )
-//    aShape = aComp;
-
-
-/* v1
-  TopoDS_Shape aShape;
-
-  StlAPI::Read(aShape, fname_.c_str());
-  */
-
-  setShape(aComp);
+    else
+    {
+        this->operator=(*cache.markAsUsed<STL>(hash()));
+    }
 }
 
 
@@ -178,9 +200,9 @@ void STL::insertrule(parser::ISCADParser& ruleset) const
     "STL",
     typename parser::ISCADParser::ModelstepRulePtr(new typename parser::ISCADParser::ModelstepRule(
 
-    ( '('
-        >> ruleset.r_path >> ')' )
-      [ qi::_val = phx::bind(&STL::create, qi::_1) ]
+     ( '(' >> ruleset.r_path >> ')' ) [ qi::_val = phx::bind(&STL::create, qi::_1) ]
+     |
+     ( '(' >> ruleset.r_path >> ',' >> ruleset.r_solidmodel_expression >> ')' ) [ qi::_val = phx::bind(&STL::create_other, qi::_1, qi::_2) ]
 
     ))
   );
@@ -196,9 +218,10 @@ FeatureCmdInfoList STL::ruleDocumentation() const
         (
             "STL",
 
-            "( <path:filename> )",
+            "( <path:filename> [, <feature:other transform feature> ] )",
 
-            "Import a triangulated surface for display."
+            "Import a triangulated surface for display. The result can only be used for display, no operations can be performed on it."
+            "Transformations can be reused from other transform features. The name of another transformed feature can be provided optionally."
         )
     );
 }

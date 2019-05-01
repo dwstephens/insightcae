@@ -25,6 +25,11 @@
 #include "base/parameterset.h"
 #endif
 
+#include "qoccviewwidget.h"
+#include "qmodeltree.h"
+
+#undef None
+#undef Bool
 #include <QWidget>
 #include <QSplitter>
 #include <QTreeWidget>
@@ -38,22 +43,39 @@ class ParameterEditorWidget
 protected:
     QTreeWidget *ptree_;
     QWidget *inputContents_;
+
+//    QoccViewerContext* context_;
+    QoccViewWidget* viewer_;
+    QModelTree* modeltree_;
+
     QTreeWidgetItem* root_;
     
     insight::ParameterSet& parameters_;
-    
+
+    insight::ParameterSet_ValidatorPtr vali_;
+    insight::ParameterSet_VisualizerPtr viz_;
+
 public:
-    ParameterEditorWidget(insight::ParameterSet& pset, QWidget* parent);
+    ParameterEditorWidget(insight::ParameterSet& pset, QWidget* parent,
+                          insight::ParameterSet_ValidatorPtr vali = insight::ParameterSet_ValidatorPtr(),
+                          insight::ParameterSet_VisualizerPtr viz = insight::ParameterSet_VisualizerPtr(),
+                          QoccViewWidget *viewwidget = nullptr,
+                          QModelTree *modeltree = nullptr
+                          );
     
     void insertParameter(const QString& name, insight::Parameter& parameter);
     
 public slots:
     void onApply();
     void onUpdate();
-    
+
+    void onUpdateVisualization();
+    void onCheckValidity();
+
 signals:
     void apply();
     void update();
+    void parameterSetChanged();
 };
 
 

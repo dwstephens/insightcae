@@ -201,7 +201,7 @@ TabularResultWrapper::TabularResultWrapper(QTreeWidgetItem* tree, const QString&
   le_=new QTableWidget(res().rows().size(), res().headings().size()/*, this*/);
   
   QStringList headers;
-  BOOST_FOREACH(const std::string& h, res().headings() )
+  for (const std::string& h: res().headings() )
   {
     headers << QString(h.c_str());
   }
@@ -275,7 +275,7 @@ void addWrapperToWidget ( insight::ResultElementCollection& rset, QTreeWidgetIte
 //   QVBoxLayout *vlayout=new QVBoxLayout(widget);
 
 //   for(insight::ResultSet::iterator i=rset.begin(); i!=rset.end(); i++)
-    std::vector<insight::ResultElementCollection::value_type> items;
+    std::vector<std::pair<insight::ResultElementCollection::key_type,insight::ResultElementCollection::mapped_type> > items;
 
 //   std::transform
 //   (
@@ -289,8 +289,8 @@ void addWrapperToWidget ( insight::ResultElementCollection& rset, QTreeWidgetIte
     (
         rset.begin(),
         rset.end(),
-    [&items] ( const insight::ResultElementCollection::value_type& p ) {
-        items.push_back ( p );
+        [&items] ( const insight::ResultElementCollection::value_type& p ) {
+          items.push_back ( p );
     }
     );
 
@@ -303,7 +303,7 @@ void addWrapperToWidget ( insight::ResultElementCollection& rset, QTreeWidgetIte
     }
     );
 
-    BOOST_FOREACH ( const insight::ResultElementCollection::value_type& i, items ) {
+    for ( const insight::ResultElementCollection::value_type& i: items ) {
         try {
             ResultElementWrapper *wrapper =
                 ResultElementWrapper::lookup

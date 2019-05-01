@@ -20,7 +20,15 @@
 #ifndef TOOLS_H
 #define TOOLS_H
 
+class vtkPolyData;
+class vtkCellArray;
+
+#include "vtkSmartPointer.h"
+#include "vtkPolyDataAlgorithm.h"
+
 #include "base/boost_include.h"
+#include "base/linearalgebra.h"
+
 
 namespace insight
 {
@@ -55,7 +63,71 @@ class ExecTimer
 {
 public:
     ExecTimer(const std::string& name);
+
+    ~ExecTimer();
 };
+
+
+
+class LineMesh_to_OrderedPointTable
+        : public std::vector<arma::mat>
+{
+    void calcConnectionInfo(vtkCellArray* lines);
+
+public:
+    typedef std::vector<vtkIdType> idList;
+    typedef std::map<vtkIdType,idList> idListMap;
+
+    idListMap pointCells_, cellPoints_;
+    std::set<vtkIdType> endPoints_;
+
+    LineMesh_to_OrderedPointTable(vtkPolyData* pd);
+
+    inline vtkIdType nEndpoints() const { return vtkIdType(endPoints_.size()); }
+
+    void printSummary(std::ostream&, vtkPolyData* pd=nullptr) const;
+
+    /**
+     * @brief txyz
+     * convert point list into a single matrix
+     * @return
+     * matrix with first column: distance coordinate,
+     * cols 2,3,4: x, y, z
+     */
+    arma::mat txyz() const;
+};
+
+
+
+
+
+
+class vtk_Transformer
+{
+public:
+  virtual ~vtk_Transformer();
+  virtual vtkSmartPointer<vtkPolyDataAlgorithm> apply_VTK_Transform(vtkSmartPointer<vtkPolyDataAlgorithm> in) =0;
+};
+
+typedef vtk_Transformer* vtk_TransformerPtr;
+typedef std::vector<vtk_TransformerPtr> vtk_TransformerList;
+
+
+vtkSmartPointer<vtkPolyDataAlgorithm>
+readSTL
+(
+  const boost::filesystem::path& path,
+  const vtk_TransformerList& trsf = vtk_TransformerList()
+);
+/**
+  * return bounding box of model
+  * first col: min point
+  * second col: max point
+  */
+arma::mat STLBndBox(
+  vtkSmartPointer<vtkPolyDataAlgorithm> stl_data_Set
+);
+
 
 }
 

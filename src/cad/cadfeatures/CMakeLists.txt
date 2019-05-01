@@ -21,6 +21,7 @@ add_sources(insightcad_SOURCES
  ellipse.cpp
  fillet.cpp
  fillingface.cpp
+ fixshape.cpp
  gluefaces.cpp
  importsolidmodel.cpp
  linearpattern.cpp
@@ -43,15 +44,20 @@ add_sources(insightcad_SOURCES
  spring.cpp
  sinewave.cpp
  helix.cpp
+ spiral.cpp
  stitchedshell.cpp
  stitchedsolid.cpp
+
  stl.cpp
+
  sweep.cpp
  thicken.cpp
  transform.cpp
  tri.cpp
  wire.cpp
+ wirefillet.cpp
  modelfeature.cpp
+ maxsurfacecurvature.cpp
  subfeature.cpp
  nacafourdigit.cpp
  coil.cpp

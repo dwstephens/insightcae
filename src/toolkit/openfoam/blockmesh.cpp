@@ -131,7 +131,7 @@ Block* Block::transformed(const arma::mat& tm, bool inv) const
 {
   PointList p2;
   std::cout<<"#corners="<<corners_.size()<<std::endl;
-  BOOST_FOREACH( const Point& p, corners_ )
+  for ( const Point& p: corners_ )
   {
     p2 += tm*p;
   }
@@ -142,6 +142,18 @@ Block* Block::transformed(const arma::mat& tm, bool inv) const
    grading_,
    zone_,
    inv ? (!inv_) : inv_
+  );
+}
+
+Block* Block::clone() const
+{
+  return new Block
+  (
+    corners_,
+    resolution_[0], resolution_[1], resolution_[2],
+    grading_,
+    zone_,
+    false
   );
 }
 
@@ -193,7 +205,7 @@ void Block::swapGrad()
   {
     if (gl->size()>0)
     {
-      BOOST_FOREACH( double& g, *gl )
+      for ( double& g: *gl )
       {
 	g = 1./g;
       }
@@ -528,6 +540,15 @@ Edge::Edge(const Point& c0, const Point& c1)
 Edge::~Edge()
 {}
 
+bool Edge::connectsPoints(const Point& c0, const Point& c1) const
+{
+  return (
+      ( ( arma::norm(c0 - c0_, 2) < SMALL ) && ( arma::norm(c1 - c1_, 2) < SMALL ) )
+      ||
+      ( ( arma::norm(c1 - c0_, 2) < SMALL ) && ( arma::norm(c0 - c1_, 2) < SMALL ) )
+     );
+}
+
 void Edge::registerPoints(blockMesh& bmd) const
 {
   bmd.addPoint(c0_);
@@ -565,7 +586,10 @@ Edge* ArcEdge::transformed(const arma::mat& tm) const
   return new ArcEdge(tm*c0_, tm*c1_, tm*midpoint_);
 }
 
-
+Edge* ArcEdge::clone() const
+{
+  return new ArcEdge(c0_, c1_, midpoint_);
+}
 
 EllipseEdge::EllipseEdge
 (
@@ -599,6 +623,10 @@ Edge* EllipseEdge::transformed(const arma::mat& tm) const
   throw insight::Exception("Not implemented!");
 }
 
+Edge* EllipseEdge::clone() const
+{
+  return new EllipseEdge(c0_, c1_, center_, ex_);
+}
 
 
 CircularEdge::CircularEdge
@@ -617,6 +645,24 @@ CircularEdge::CircularEdge
     midpoint_ = mat(bp) + r*mp0;
 }
 
+
+CircularEdge_Center::CircularEdge_Center
+(
+  const Point& c0, const Point& c1,
+  const Point& center
+)
+: ArcEdge(c0, c1, vec3(0,0,0))
+{
+  double radius=arma::norm(c0-center, 2);
+  double r2=arma::norm(c1-center, 2);
+  if (fabs(radius-r2)>1e-6)
+    throw insight::Exception("The two points on the circular edge do not have the same distance from the center!");
+  arma::mat axis = arma::cross(c0, c1);
+
+  arma::mat mp=0.5*(c0+c1);
+  arma::mat rm=mp-center; rm/=arma::norm(rm, 2);
+  midpoint_=center+rm*radius;
+}
 
 /*
 class GenArcEdge
@@ -669,7 +715,7 @@ std::vector<OFDictData::data> SplineEdge::bmdEntry(const PointMap& allPoints, in
   l.push_back( OFDictData::data(allPoints.find(c1_)->second) );
   
   OFDictData::list pl;
-  BOOST_FOREACH( const Point& pt, intermediatepoints_ )
+  for ( const Point& pt: intermediatepoints_ )
   {
     OFDictData::list ppl;
     ppl += OFDictData::data(pt[0]), OFDictData::data(pt[1]), OFDictData::data(pt[2]);
@@ -684,12 +730,21 @@ Edge* SplineEdge::transformed(const arma::mat& tm) const
 {
   PointList pl;
   pl+=tm*c0_;
-  BOOST_FOREACH(const Point& p, intermediatepoints_)
+  for (const Point& p: intermediatepoints_)
   {
     pl+=tm*p;
   }
   pl+=tm*c1_;
   return new SplineEdge(pl, splinekeyword_);
+}
+
+Edge* SplineEdge::clone() const
+{
+  PointList pts;
+  pts.push_back(c0_);
+  copy(intermediatepoints_.begin(), intermediatepoints_.end(), std::back_inserter(pts));
+  pts.push_back(c1_);
+  return new SplineEdge(pts, splinekeyword_);
 }
 
 /*
@@ -713,8 +768,10 @@ def splineEdgeAlongCurve(curve, p0, p1,
 
 Patch::Patch(std::string typ)
 : typ_(typ)
-{
-}
+{}
+
+Patch::~Patch()
+{}
 
 void Patch::addFace(Point c1, Point c2, Point c3, Point c4)
 {
@@ -742,7 +799,7 @@ void Patch::clear()
 Patch* Patch::transformed(const arma::mat& tm, bool inv) const
 {
   std::auto_ptr<Patch> np(new Patch(typ_));
-  BOOST_FOREACH( const PointList& pl, faces_)
+  for ( const PointList& pl: faces_)
   {
     PointList npl;
     if (inv)
@@ -762,6 +819,25 @@ Patch* Patch::transformed(const arma::mat& tm, bool inv) const
     np->addFace(npl);
   }
   return np.release();
+}
+
+Patch* Patch::clone() const
+{
+  std::auto_ptr<Patch> p(new Patch(typ_));
+  for (const auto&f: faces_)
+    p->addFace(f);
+  return p.release();
+}
+
+
+OFDictData::list bmdEntry(const PointList& pts, const PointMap& allPoints)
+{
+  OFDictData::list res;
+  for (const auto& p: pts)
+    {
+      res.push_back( allPoints.find(p)->second );
+    }
+  return res;
 }
 
 
@@ -1058,6 +1134,31 @@ blockMesh::blockMesh(OpenFOAMCase& c)
 {
 }
 
+void blockMesh::copy(const blockMesh& other)
+{
+  for (const auto& b: other.allBlocks_)
+    {
+      this->addBlock( b.clone() );
+    }
+  for (const auto& e: other.allEdges_)
+    {
+      if (!hasEdgeBetween(e.c0(), e.c1()))
+        this->addEdge(e.clone());
+    }
+  for (const auto p: other.allPatches_)
+    {
+      auto pp=allPatches_.find(p.first);
+      if (pp!=allPatches_.end())
+        {
+          pp->second->appendPatch(*p.second);
+        }
+      else
+        {
+          this->addPatch(p.first, p.second->clone());
+        }
+    }
+}
+
 void blockMesh::setScaleFactor(double sf)
 {
   scaleFactor_=sf;
@@ -1089,12 +1190,33 @@ void blockMesh::numberVertices(PointMap& pts) const
        }
 }
 
+bool blockMesh::hasEdgeBetween(const Point& p1, const Point& p2) const
+{
+  for (const auto& e: allEdges_)
+    {
+      if (e.connectsPoints(p1, p2))
+        return true;
+    }
+  return false;
+}
+
+OFDictData::dict& blockMesh::getBlockMeshDict(insight::OFdicts& dictionaries) const
+{
+  std::string bmdLoc="constant/polyMesh/blockMeshDict";
+  if (OFversion()>=500)
+  {
+      bmdLoc="system/blockMeshDict";
+  }
+  return dictionaries.addDictionaryIfNonexistent(bmdLoc);
+}
+
 void blockMesh::addIntoDictionaries(insight::OFdicts& dictionaries) const
 {
   PointMap pts(allPoints_);
   numberVertices(pts);
   
-  OFDictData::dict& blockMeshDict=dictionaries.addDictionaryIfNonexistent("constant/polyMesh/blockMeshDict");
+  OFDictData::dict& blockMeshDict=getBlockMeshDict(dictionaries);
+
   blockMeshDict["convertToMeters"]=scaleFactor_;
   
   OFDictData::dict def;

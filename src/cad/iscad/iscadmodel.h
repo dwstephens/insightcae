@@ -25,6 +25,11 @@
 #include <QTreeView>
 #include <QFileSystemModel>
 #include <QTabWidget>
+#include <QSplitter>
+#include <QMenu>
+#include <QMenuBar>
+#include <QFileDialog>
+#include <QMessageBox>
 
 #include "qoccviewercontext.h"
 #include "qoccviewwidget.h"
@@ -74,6 +79,8 @@ protected:
     
     bool skipPostprocActions_;
 
+    QSize sizehint_;
+
     
 protected:
     void clearDerivedData();
@@ -101,7 +108,9 @@ public:
 
     inline bool isUnsaved() const { return unsaved_; }
 
-protected slots:
+    virtual QSize sizeHint() const;
+
+public slots:
     void onGraphicalSelectionChanged(QoccViewWidget* aView);
 
     /**
@@ -166,7 +175,7 @@ protected slots:
 //    void allWireframe();
 
     
-public slots:
+public Q_SLOTS:
 
     /**
      * save model under the file name from which is was loaded
@@ -211,12 +220,12 @@ public slots:
 
     void onCancelRebuild();
 
-signals:
+Q_SIGNALS:
     
     /**
      * user status informations
      */
-    void displayStatusMessage(const QString&);
+    void displayStatusMessage(const QString&, double timeout=0);
 
     /**
      * @brief statusProgress
@@ -286,7 +295,7 @@ public:
     inline QTextEdit* notepad() { return notepad_; }
     inline QModelTree* modeltree() { return modeltree_; }
 
-public slots:
+public Q_SLOTS:
     void onCopyBtnClicked();
     void onUpdateTitle(const boost::filesystem::path& filepath, bool isUnSaved);
     void onInsertNotebookText(const QString& text);

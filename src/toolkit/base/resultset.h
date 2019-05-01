@@ -22,6 +22,7 @@
 #ifndef INSIGHT_RESULTSET_H
 #define INSIGHT_RESULTSET_H
 
+#include "base/units.h"
 #include "base/parameterset.h"
 #include "base/linearalgebra.h"
 
@@ -30,6 +31,11 @@
 
 #include "base/boost_include.h"
 #include "boost/gil/gil_all.hpp"
+
+
+namespace gnuplotio {
+ class Gnuplot;
+}
 
 namespace insight 
 {
@@ -124,7 +130,7 @@ public:
      */
     virtual ParameterPtr convertIntoParameter() const;
 
-    virtual boost::shared_ptr<ResultElement> clone() const =0;
+    virtual std::shared_ptr<ResultElement> clone() const =0;
 };
 
 
@@ -143,7 +149,7 @@ public:
 
 
 //typedef std::auto_ptr<ResultElement> ResultElementPtr;
-typedef boost::shared_ptr<ResultElement> ResultElementPtr;
+typedef std::shared_ptr<ResultElement> ResultElementPtr;
 
 
 
@@ -307,7 +313,21 @@ public:
     virtual ResultElementPtr clone() const;
 };
 
+#ifdef SWIG
+%template(vectorNumericalResult) NumericalResult<arma::mat>;
+#endif
 
+class VectorResult
+    : public NumericalResult<arma::mat>
+{
+public:
+    declareType ( "VectorResult" );
+
+    VectorResult ( const std::string& shortdesc, const std::string& longdesc, const std::string& unit );
+    VectorResult ( const arma::mat& value, const std::string& shortDesc, const std::string& longDesc, const std::string& unit );
+    virtual void writeLatexCode ( std::ostream& f, const std::string& name, int level, const boost::filesystem::path& outputfilepath ) const;
+    virtual ResultElementPtr clone() const;
+};
 
 
 class TabularResult
@@ -522,7 +542,7 @@ public:
 
 };
 
-typedef boost::shared_ptr<ResultElementCollection> ResultElementCollectionPtr;
+typedef std::shared_ptr<ResultElementCollection> ResultElementCollectionPtr;
 
 
 
@@ -552,9 +572,9 @@ T& ResultElementCollection::get ( const std::string& name )
         }
       else
         {
-          boost::shared_ptr<T> pt
+          std::shared_ptr<T> pt
           ( 
-            boost::dynamic_pointer_cast<T>( i->second ) 
+            std::dynamic_pointer_cast<T>( i->second )
           );
           if ( pt )
           {
@@ -597,8 +617,11 @@ public:
         rapidxml::xml_node<>& node
     ) const;
 
-    virtual boost::shared_ptr<ResultElement> clone() const;
+    virtual std::shared_ptr<ResultElement> clone() const;
 };
+
+
+typedef std::shared_ptr<ResultSection> ResultSectionPtr;
 
 
 class ResultSet
@@ -675,7 +698,7 @@ public:
 
 
 
-typedef boost::shared_ptr<ResultSet> ResultSetPtr;
+typedef std::shared_ptr<ResultSet> ResultSetPtr;
 
 
 
@@ -746,14 +769,30 @@ struct PlotCurve {
 
 
 
-typedef std::vector<PlotCurve> PlotCurveList;
+struct PlotCurveList : public std::vector<PlotCurve>
+{
+ PlotCurveList()
+  : std::vector<PlotCurve>()
+ {}
+
+ PlotCurveList(size_t n)
+  : std::vector<PlotCurve>(n)
+ {}
+
+ template<class It>
+ PlotCurveList(It begin, It end)
+  : std::vector<PlotCurve>(begin, end)
+ {}
+
+ bool include_zero=true;
+};
 
 
 
 
 insight::ResultElement& addPlot
 (
-    boost::shared_ptr<ResultElementCollection> results,
+    std::shared_ptr<ResultElementCollection> results,
     const boost::filesystem::path& workdir,
     const std::string& resultelementname,
     const std::string& xlabel,
@@ -788,6 +827,7 @@ public:
         const std::string& addinit = ""
     );
 
+    virtual void gnuplotCommand(gnuplotio::Gnuplot&) const;
     virtual void generatePlotImage ( const boost::filesystem::path& imagepath ) const;
 
     virtual void writeLatexHeaderCode ( std::ostream& f ) const;
@@ -805,6 +845,43 @@ public:
     ) const;
 
     virtual ResultElementPtr clone() const;
+};
+
+
+insight::ResultElement& addPolarPlot
+(
+    std::shared_ptr<ResultElementCollection> results,
+    const boost::filesystem::path& workdir,
+    const std::string& resultelementname,
+    const std::string& rlabel,
+    const PlotCurveList& plc,
+    const std::string& shortDescription,
+    double phi_unit = SI::rad,
+    const std::string& addinit = "",
+    const std::string& watermarktext = ""
+);
+
+
+class PolarChart
+  : public Chart
+{
+ double phi_unit_;
+public:
+ declareType ( "PolarChart" );
+ PolarChart ( const std::string& shortdesc, const std::string& longdesc, const std::string& unit );
+ PolarChart
+ (
+     const std::string& rlabel,
+     const PlotCurveList& plc,
+     const std::string& shortDesc,
+     const std::string& longDesc,
+     double phi_unit = SI::rad,
+     const std::string& addinit = ""
+ );
+
+ virtual void gnuplotCommand(gnuplotio::Gnuplot&) const;
+
+ virtual ResultElementPtr clone() const;
 };
 
 
@@ -828,7 +905,7 @@ typedef std::vector<PlotCurve> PlotFieldList;
 
 void addContourPlot
 (
-    boost::shared_ptr<ResultElementCollection> results,
+    std::shared_ptr<ResultElementCollection> results,
     const boost::filesystem::path& workdir,
     const std::string& resultelementname,
     const std::string& xlabel,

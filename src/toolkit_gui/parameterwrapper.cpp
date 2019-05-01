@@ -22,6 +22,8 @@
 
 #include <typeinfo>
 
+#undef None
+#undef Bool
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -30,7 +32,9 @@
 #include <QGroupBox>
 #include <QFileDialog>
 #include <QInputDialog>
-#include <QWebView>
+#include <QTextEdit>
+
+#include "helpwidget.h"
 
 #ifndef Q_MOC_RUN
 #include "boost/foreach.hpp"
@@ -38,6 +42,8 @@
 
 #include "base/tools.h"
 #include "boost/spirit/include/classic.hpp"
+
+#include "parametereditorwidget.h"
 
 using namespace boost;
 
@@ -51,7 +57,11 @@ void addWrapperToWidget
 )
 {
 //   QVBoxLayout *vlayout=new QVBoxLayout(widget);
-    for ( insight::ParameterSet::iterator i=pset.begin(); i!=pset.end(); i++ ) {
+    for ( insight::ParameterSet::iterator i=pset.begin(); i!=pset.end(); i++ )
+    {
+
+      if (! i->second->isHidden())
+      {
         ParameterWrapper *wrapper =
             ParameterWrapper::lookup
             (
@@ -59,15 +69,22 @@ void addWrapperToWidget
                 parentnode, i->first.c_str(), *i->second, detaileditwidget, superform
             );
 
-        QObject::connect ( parentnode->treeWidget(), SIGNAL ( itemSelectionChanged() ),
-                           wrapper, SLOT ( onSelectionChanged() ) );
-// 	vlayout->addWidget(wrapper);
-        if ( superform ) {
+        QObject::connect ( parentnode->treeWidget(), &QTreeWidget::itemSelectionChanged,
+                           wrapper, &ParameterWrapper::onSelectionChanged );
+
+        if ( superform )
+        {
             QObject::connect ( superform, SIGNAL ( apply() ), wrapper, SLOT ( onApply() ) );
             QObject::connect ( superform, SIGNAL ( update() ), wrapper, SLOT ( onUpdate() ) );
+            QObject::connect ( wrapper, SIGNAL ( parameterSetChanged() ), superform, SLOT ( onUpdateVisualization() ) );
+            QObject::connect ( wrapper, SIGNAL ( parameterSetChanged() ), superform, SLOT ( onCheckValidity() ) );
+            QObject::connect ( wrapper, SIGNAL ( parameterSetChanged() ),
+                               superform,  SIGNAL ( parameterSetChanged() ) );
         }
+      }
     }
 }
+
 
 
 defineType(ParameterWrapper);
@@ -174,8 +191,8 @@ void IntParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -183,15 +200,15 @@ void IntParameterWrapper::createWidgets()
   QLabel *promptLabel = new QLabel("Value:", detaileditwidget_);
   layout2->addWidget(promptLabel);
   le_=new QLineEdit(detaileditwidget_);
-  connect(le_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
+  connect(le_, &QLineEdit::destroyed, this, &IntParameterWrapper::onDestruction);
   le_->setText(QString::number(param()()));
   le_->setValidator(new QIntValidator());
-  connect(le_, SIGNAL(returnPressed()), this, SLOT(onApply()));
+  connect(le_, &QLineEdit::returnPressed, this, &IntParameterWrapper::onApply);
   layout2->addWidget(le_);
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &IntParameterWrapper::onApply);
   layout->addWidget(apply);
   
   layout->addStretch();
@@ -205,6 +222,7 @@ void IntParameterWrapper::onApply()
   {
     param()()=le_->text().toInt();
     setText(1, QString::number(param()()));
+    emit parameterSetChanged();
   }
 }
 
@@ -237,8 +255,8 @@ void DoubleParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -246,16 +264,16 @@ void DoubleParameterWrapper::createWidgets()
   QLabel *promptLabel = new QLabel("Value:", detaileditwidget_);
   layout2->addWidget(promptLabel);
   le_=new QLineEdit(detaileditwidget_);
-  connect(le_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
+  connect(le_, &QLineEdit::destroyed, this, &DoubleParameterWrapper::onDestruction);
   le_->setText(QString::number(param()()));
   le_->setValidator(new QDoubleValidator());
-  connect(le_, SIGNAL(returnPressed()), this, SLOT(onApply()));
+  connect(le_, &QLineEdit::returnPressed, this, &DoubleParameterWrapper::onApply);
   layout2->addWidget(le_);
   
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &DoubleParameterWrapper::onApply);
   layout->addWidget(apply);
   
   layout->addStretch();
@@ -279,6 +297,7 @@ void DoubleParameterWrapper::onApply()
   {
     param()()=le_->text().toDouble();
     setText(1, QString::number(param()()));
+    emit parameterSetChanged();
   }
 }
 
@@ -312,8 +331,8 @@ void VectorParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -321,14 +340,14 @@ void VectorParameterWrapper::createWidgets()
   QLabel *promptLabel = new QLabel("Value:", detaileditwidget_);
   layout2->addWidget(promptLabel);
   le_=new QLineEdit(detaileditwidget_);
-  connect(le_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
+  connect(le_, &QLineEdit::destroyed, this, &VectorParameterWrapper::onDestruction);
   le_->setText(QString(insight::valueToString(param()()).c_str()));
-  connect(le_, SIGNAL(returnPressed()), this, SLOT(onApply()));
+  connect(le_, &QLineEdit::returnPressed, this, &VectorParameterWrapper::onApply);
   layout2->addWidget(le_);
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &VectorParameterWrapper::onApply);
   layout->addWidget(apply);
 
   layout->addStretch();
@@ -354,6 +373,7 @@ void VectorParameterWrapper::onApply()
   {
     insight::stringToValue(le_->text().toStdString(), param()());
     setText(1, QString(insight::valueToString(param()()).c_str()));
+    emit parameterSetChanged();
   }
 }
 
@@ -389,8 +409,8 @@ void StringParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -398,13 +418,13 @@ void StringParameterWrapper::createWidgets()
   QLabel *promptLabel = new QLabel("Value:", detaileditwidget_);
   layout2->addWidget(promptLabel);
   le_=new QLineEdit(detaileditwidget_);
-  connect(le_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
-  connect(le_, SIGNAL(returnPressed()), this, SLOT(onApply()));
+  connect(le_, &QLineEdit::destroyed, this, &StringParameterWrapper::onDestruction);
+  connect(le_, &QLineEdit::returnPressed, this, &StringParameterWrapper::onApply);
   layout2->addWidget(le_);
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &StringParameterWrapper::onApply);
   layout->addWidget(apply);
 
   layout->addStretch();
@@ -427,6 +447,7 @@ void StringParameterWrapper::onApply()
   {
     param()()=le_->text().toStdString();
     setText(1, param()().c_str());
+    emit parameterSetChanged();
   }
 }
 
@@ -459,8 +480,8 @@ void BoolParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -468,7 +489,7 @@ void BoolParameterWrapper::createWidgets()
   QLabel *promptLabel = new QLabel("Value:", detaileditwidget_);
   layout2->addWidget(promptLabel);
   cb_=new QCheckBox(detaileditwidget_);
-  connect(cb_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
+  connect(cb_, &QCheckBox::destroyed, this, &BoolParameterWrapper::onDestruction);
   if (param()())
     cb_->setCheckState(Qt::Checked);
   else
@@ -477,7 +498,7 @@ void BoolParameterWrapper::createWidgets()
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &BoolParameterWrapper::onApply);
   layout->addWidget(apply);
 
   layout->addStretch();
@@ -503,6 +524,7 @@ void BoolParameterWrapper::onApply()
   {
     param()() = (cb_->checkState() == Qt::Checked);
     setText(1, param()() ? "true" : "false");
+    emit parameterSetChanged();
   }
 }
 
@@ -541,8 +563,8 @@ void PathParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -550,8 +572,8 @@ void PathParameterWrapper::createWidgets()
   QLabel *promptLabel = new QLabel("Value:", detaileditwidget_);
   layout2->addWidget(promptLabel);
   le_=new QLineEdit(detaileditwidget_);
-  connect(le_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
-  connect(le_, SIGNAL(returnPressed()), this, SLOT(onApply()));
+  connect(le_, &QLineEdit::destroyed, this, &PathParameterWrapper::onDestruction);
+  connect(le_, &QLineEdit::returnPressed, this, &PathParameterWrapper::onApply);
   le_->setText(param()().c_str());
   layout2->addWidget(le_);
   dlgBtn_=new QPushButton("...", detaileditwidget_);
@@ -559,7 +581,7 @@ void PathParameterWrapper::createWidgets()
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &PathParameterWrapper::onApply);
   layout->addWidget(apply);
 
   layout->addStretch();
@@ -577,8 +599,8 @@ void PathParameterWrapper::createWidgets()
 //   updateTooltip();
 //   detaileditwidget_->setLayout(layout);
   
-  connect(le_, SIGNAL(textChanged(QString)), this, SLOT(onDataEntered()));
-  connect(dlgBtn_, SIGNAL(clicked(bool)), this, SLOT(openSelectionDialog()));
+  connect(le_, &QLineEdit::textChanged, this, &PathParameterWrapper::onDataEntered);
+  connect(dlgBtn_, &QPushButton::clicked, this, &PathParameterWrapper::openSelectionDialog);
 }
 
 void PathParameterWrapper::updateTooltip()
@@ -597,6 +619,7 @@ void PathParameterWrapper::onApply()
   {
     param()()=le_->text().toStdString();
     setText(1, param()().c_str());
+    emit parameterSetChanged();
   }
 }
 
@@ -661,8 +684,8 @@ void MatrixParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -670,8 +693,8 @@ void MatrixParameterWrapper::createWidgets()
   QLabel *promptLabel = new QLabel("Value:", detaileditwidget_);
   layout2->addWidget(promptLabel);
   le_=new QLineEdit(detaileditwidget_);
-  connect(le_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
-  connect(le_, SIGNAL(returnPressed()), this, SLOT(onApply()));
+  connect(le_, &QLineEdit::destroyed, this, &MatrixParameterWrapper::onDestruction);
+  connect(le_, &QLineEdit::returnPressed, this, &MatrixParameterWrapper::onApply);
   le_->setText(mat2Str(param()()));
   layout2->addWidget(le_);
   dlgBtn_=new QPushButton("...", detaileditwidget_);
@@ -679,7 +702,7 @@ void MatrixParameterWrapper::createWidgets()
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &MatrixParameterWrapper::onApply);
   layout->addWidget(apply);
 
   layout->addStretch();
@@ -696,7 +719,7 @@ void MatrixParameterWrapper::createWidgets()
 //   layout->addWidget(dlgBtn_);
 //   detaileditwidget_->setLayout(layout);
   
-  connect(dlgBtn_, SIGNAL(clicked(bool)), this, SLOT(openSelectionDialog()));
+  connect(dlgBtn_, &QPushButton::clicked, this, &MatrixParameterWrapper::openSelectionDialog);
 }
 
 
@@ -706,6 +729,7 @@ void MatrixParameterWrapper::onApply()
   if (widgetsDisplayed_)
   {
     param()()=arma::mat(le_->text().toStdString());
+    emit parameterSetChanged();
   }
 }
 
@@ -771,8 +795,8 @@ void SelectionParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -780,8 +804,8 @@ void SelectionParameterWrapper::createWidgets()
   QLabel *promptLabel = new QLabel("Selection:", detaileditwidget_);
   layout2->addWidget(promptLabel);
   selBox_=new QComboBox(detaileditwidget_);
-  connect(selBox_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
-  BOOST_FOREACH( const std::string& s, param().items() )
+  connect(selBox_, &QComboBox::destroyed, this, &SelectionParameterWrapper::onDestruction);
+  for ( const std::string& s: param().items() )
   {
     selBox_->addItem(s.c_str());
   }
@@ -790,23 +814,12 @@ void SelectionParameterWrapper::createWidgets()
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &SelectionParameterWrapper::onApply);
   layout->addWidget(apply);
 
   layout->addStretch();
   detaileditwidget_->setLayout(layout);
 
-//   QHBoxLayout *layout=new QHBoxLayout(detaileditwidget_);
-//   QLabel *nameLabel = new QLabel(name_, detaileditwidget_);
-//   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
-//   layout->addWidget(nameLabel);
-//   selBox_=new QComboBox(detaileditwidget_);
-//   BOOST_FOREACH( const std::string& s, param().items() )
-//   {
-//     selBox_->addItem(s.c_str());
-//   }
-//   layout->addWidget(selBox_);
-//   detaileditwidget_->setLayout(layout);
 }
 
 void SelectionParameterWrapper::onApply()
@@ -815,6 +828,7 @@ void SelectionParameterWrapper::onApply()
   {
     param()()=selBox_->currentIndex();
     setText(1, param().selection().c_str());
+    emit parameterSetChanged();
   }
 }
 
@@ -847,8 +861,8 @@ void SubsetParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
   
@@ -858,7 +872,7 @@ void SubsetParameterWrapper::createWidgets()
 
   layout->addStretch();
   detaileditwidget_->setLayout(layout);
-  connect(detaileditwidget_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
+  connect(detaileditwidget_, &QWidget::destroyed, this, &SubsetParameterWrapper::onDestruction);
   
 //   QHBoxLayout *layout=new QHBoxLayout(detaileditwidget_);
 //   QGroupBox *nameLabel = new QGroupBox(name_, detaileditwidget_);
@@ -895,9 +909,9 @@ void ArrayParameterWrapper::addWrapper(int i)
       this, "["+QString::number(i)+"]", pp, detaileditwidget_, superform_
     );
 
-  QObject::connect(treeWidget(), SIGNAL(itemSelectionChanged()), wrapper, SLOT(onSelectionChanged()));
-  QObject::connect(this, SIGNAL(apply()), wrapper, SLOT(onApply()));
-  QObject::connect(this, SIGNAL(update()), wrapper, SLOT(onUpdate()));  
+  QObject::connect(treeWidget(), &QTreeWidget::itemSelectionChanged, wrapper, &ParameterWrapper::onSelectionChanged);
+  QObject::connect(this, &ArrayParameterWrapper::apply, wrapper, &ParameterWrapper::onApply);
+  QObject::connect(this, &ArrayParameterWrapper::update, wrapper, &ParameterWrapper::onUpdate);
 }
 
 void ArrayParameterWrapper::rebuildWrappers()
@@ -921,10 +935,8 @@ ArrayParameterWrapper::ArrayParameterWrapper(QTreeWidgetItem* parent, const QStr
   setText(1, "array");
   connect
   (
-    treeWidget(),
-    SIGNAL(customContextMenuRequested(const QPoint &)),
-    this,
-    SLOT(showContextMenuForWidget(const QPoint &))
+    treeWidget(), &QTreeWidget::customContextMenuRequested,
+    this, &ArrayParameterWrapper::showContextMenuForWidget
   );
   
   rebuildWrappers();
@@ -984,14 +996,14 @@ void ArrayParameterWrapper::createWidgets()
   QFont f=label->font(); f.setBold(true); label->setFont(f);
   layout->addWidget(label);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
   QHBoxLayout *layout2=new QHBoxLayout(detaileditwidget_);
   QPushButton *addbtn=new QPushButton("+ Add new", detaileditwidget_);
-  connect(addbtn, SIGNAL(clicked()), this, SLOT(onAppendEmpty()));
+  connect(addbtn, &QPushButton::clicked, this, &ArrayParameterWrapper::onAppendEmpty);
   layout2->addWidget(addbtn);
   
 //   connect(map_, SIGNAL(mapped(int)), detaileditwidget_, SLOT(onRemove(int)));
@@ -1008,6 +1020,7 @@ void ArrayParameterWrapper::onRemove(int i)
   emit(apply());
   param().eraseValue(i);
   rebuildWrappers();
+  emit parameterSetChanged();
 }
 
 void ArrayParameterWrapper::onAppendEmpty()
@@ -1015,6 +1028,7 @@ void ArrayParameterWrapper::onAppendEmpty()
   emit(apply());
   param().appendEmpty();
   rebuildWrappers();
+  emit parameterSetChanged();
 }
 
 void ArrayParameterWrapper::onApply()
@@ -1051,8 +1065,8 @@ void DoubleRangeParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
   
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
 
@@ -1061,7 +1075,7 @@ void DoubleRangeParameterWrapper::createWidgets()
 
   QHBoxLayout *layout2=new QHBoxLayout(detaileditwidget_);
   lBox_=new QListWidget(detaileditwidget_);
-  connect(lBox_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
+  connect(lBox_, &QListWidget::destroyed, this, &DoubleRangeParameterWrapper::onDestruction);
   rebuildList();
   layout2->addWidget(lBox_);
   
@@ -1069,19 +1083,19 @@ void DoubleRangeParameterWrapper::createWidgets()
   
   QPushButton *addbtn=new QPushButton("Add...", detaileditwidget_);
   sublayout->addWidget(addbtn);
-  connect(addbtn, SIGNAL(clicked()), this, SLOT(onAddSingle()));
+  connect(addbtn, &QPushButton::clicked, this, &DoubleRangeParameterWrapper::onAddSingle);
   QPushButton *addrangebtn=new QPushButton("Add Range...", detaileditwidget_);
   sublayout->addWidget(addrangebtn);
-  connect(addrangebtn, SIGNAL(clicked()), this, SLOT(onAddRange()));
+  connect(addrangebtn, &QPushButton::clicked, this, &DoubleRangeParameterWrapper::onAddRange);
   QPushButton *clearbtn=new QPushButton("Clear", detaileditwidget_);
   sublayout->addWidget(clearbtn);
-  connect(clearbtn, SIGNAL(clicked()), this, SLOT(onClear()));
+  connect(clearbtn, &QPushButton::clicked, this, &DoubleRangeParameterWrapper::onClear);
   layout2->addLayout(sublayout);
   
   layout->addLayout(layout2);
   
   QPushButton* apply=new QPushButton("&Apply", detaileditwidget_);
-  connect(apply, SIGNAL(pressed()), this, SLOT(onApply()));
+  connect(apply, &QPushButton::pressed, this, &DoubleRangeParameterWrapper::onApply);
   layout->addWidget(apply);
 
   layout->addStretch();
@@ -1107,6 +1121,7 @@ void DoubleRangeParameterWrapper::onAddSingle()
   {
     param().insertValue(v);
     rebuildList();
+    emit parameterSetChanged();
   }
 }
 
@@ -1123,6 +1138,7 @@ void DoubleRangeParameterWrapper::onAddRange()
     {
       double x=x0+(x1-x0)*double(i)/double(num-1);
       param().insertValue(x);
+      emit parameterSetChanged();
     }
     rebuildList();
   }
@@ -1132,6 +1148,7 @@ void DoubleRangeParameterWrapper::onClear()
 {
   param().values().clear();
   rebuildList();
+  emit parameterSetChanged();
 }
 
 void DoubleRangeParameterWrapper::onApply()
@@ -1164,16 +1181,16 @@ void SelectableSubsetParameterWrapper::createWidgets()
   QFont f=nameLabel->font(); f.setBold(true); nameLabel->setFont(f);
   layout->addWidget(nameLabel);
 
-  QWebView *shortDescLabel = 
-    new QWebView( detaileditwidget_ );
+  HelpWidget *shortDescLabel =
+    new HelpWidget( detaileditwidget_ );
   shortDescLabel->setHtml( param().description().toHTML().c_str() );
   layout->addWidget(shortDescLabel);
   
   QHBoxLayout *layout2=new QHBoxLayout(detaileditwidget_);
   layout2->addWidget(new QLabel("Selection:", detaileditwidget_));
   selBox_=new QComboBox(detaileditwidget_);
-  connect(selBox_, SIGNAL(destroyed(void)), this, SLOT(onDestruction(void)));
-  BOOST_FOREACH( const insight::SelectableSubsetParameter::ItemList::const_iterator::value_type& pair, param().items() )
+  connect(selBox_, &QComboBox::destroyed, this, &SelectableSubsetParameterWrapper::onDestruction);
+  for ( auto pair: param().items() )
   {
 //     std::cout<<"inserted text:"<<pair.first<<std::endl;
     selBox_->addItem(pair.first.c_str());
@@ -1188,9 +1205,8 @@ void SelectableSubsetParameterWrapper::createWidgets()
   layout->addStretch();
   detaileditwidget_->setLayout(layout);
 
-  connect(apply, SIGNAL(clicked()), this, SLOT(onApply()));
-//   connect(selBox_, SIGNAL(currentIndexChanged(const QString&)), 
-// 	  this, SLOT(onCurrentIndexChanged(const QString&)));
+  connect(apply, &QPushButton::clicked, this, &SelectableSubsetParameterWrapper::onApply);
+
 }
 
 void SelectableSubsetParameterWrapper::insertSubset()
@@ -1212,6 +1228,7 @@ void SelectableSubsetParameterWrapper::onApply()
     param().selection()=selBox_->currentText().toStdString();
     insertSubset();
     setText(1, param().selection().c_str());
+    emit parameterSetChanged();
   }
   emit(apply());
 }

@@ -52,7 +52,7 @@ ResultSetPtr ConvergenceAnalysis::operator()(ProgressDisplayer* displayer)
     }
 
   ResultSetPtr results ( new ResultSet ( parameters(), name_, "Result Report" ) );
-//   boost::shared_ptr<ResultSection> section
+//   std::shared_ptr<ResultSection> section
 //   (
 //     new ResultSection
 //     (
@@ -101,7 +101,7 @@ ResultSetPtr ConvergenceAnalysis::operator()(ProgressDisplayer* displayer)
   S3=p.solutions[0].S // coarsest
      ;
 
-  std::vector<PlotCurve> plotcrvs;
+  PlotCurveList plotcrvs;
 
   {
     arma::mat x=vec3 ( p.solutions[2].deltax, p.solutions[1].deltax, p.solutions[0].deltax );
@@ -247,7 +247,7 @@ ResultSetPtr ConvergenceAnalysis::operator()(ProgressDisplayer* displayer)
       .setOrder ( so.next() );
 
       {
-        boost::shared_ptr<ResultSection> subsection
+        std::shared_ptr<ResultSection> subsection
         (
           new ResultSection
           (
@@ -279,7 +279,7 @@ ResultSetPtr ConvergenceAnalysis::operator()(ProgressDisplayer* displayer)
       }
 
       {
-        boost::shared_ptr<ResultSection> subsection
+        std::shared_ptr<ResultSection> subsection
         (
           new ResultSection
           (

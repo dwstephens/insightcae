@@ -50,7 +50,7 @@ namespace filesystem
 template < >
 path& path::append< typename path::iterator >( typename path::iterator begin, typename path::iterator end, const codecvt_type& cvt);
 
-boost::filesystem::path make_relative( boost::filesystem::path a_From, boost::filesystem::path a_To );
+//boost::filesystem::path make_relative( boost::filesystem::path a_From, boost::filesystem::path a_To );
   
 } 
 }
@@ -82,12 +82,20 @@ public:
 protected:
     SimpleLatex description_;
 
+    bool isHidden_, isExpert_, isNecessary_;
+    int order_;
+
 public:
     declareType ( "Parameter" );
 
     Parameter();
-    Parameter ( const std::string& description );
+    Parameter ( const std::string& description,  bool isHidden, bool isExpert, bool isNecessary, int order);
     virtual ~Parameter();
+
+    bool isHidden() const;
+    bool isExpert() const;
+    bool isNecessary() const;
+    int order() const;
 
     inline const SimpleLatex& description() const
     {
@@ -103,6 +111,7 @@ public:
      * LaTeX representation of the parameter value
      */
     virtual std::string latexRepresentation() const =0;
+    virtual std::string plainTextRepresentation(int indent=0) const =0;
 
     virtual rapidxml::xml_node<>* appendToNode
     (
@@ -122,12 +131,31 @@ public:
 
     rapidxml::xml_node<> *findNode ( rapidxml::xml_node<>& father, const std::string& name );
     virtual Parameter* clone() const =0;
+
+    /**
+     * @brief isPacked
+     * check, if contains file contents
+     * @return
+     */
+    virtual bool isPacked() const;
+
+    /**
+     * @brief pack
+     * pack the external file. Replace stored content, if present.
+     */
+    virtual void pack();
+
+    /**
+     * @brief unpack
+     * restore file contents on disk, if file is not there
+     */
+    virtual void unpack();
 };
 
 
 
 
-typedef boost::shared_ptr<Parameter> ParameterPtr;
+typedef std::shared_ptr<Parameter> ParameterPtr;
 
 
 
@@ -174,23 +202,23 @@ protected:
 public:
     declareType ( N );
 
-    SimpleParameter ( const std::string& description )
-        : Parameter ( description )
+    SimpleParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 )
+        : Parameter ( description, isHidden, isExpert, isNecessary, order )
     {}
 
-    SimpleParameter ( const T& value, const std::string& description )
-        : Parameter ( description ),
+    SimpleParameter ( const T& value, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 )
+        : Parameter ( description, isHidden, isExpert, isNecessary, order ),
           value_ ( value )
     {}
 
     virtual ~SimpleParameter()
     {}
 
-    inline T& operator() ()
+    virtual T& operator() ()
     {
         return value_;
     }
-    inline const T& operator() () const
+    virtual const T& operator() () const
     {
         return value_;
     }
@@ -200,9 +228,15 @@ public:
         return SimpleLatex( valueToString ( value_ ) ).toLaTeX();
     }
 
+    virtual std::string plainTextRepresentation(int indent=0) const
+    {
+        return SimpleLatex( valueToString ( value_ ) ).toPlainText();
+    }
+
+
     virtual Parameter* clone() const
     {
-        return new SimpleParameter<T, N> ( value_, description_.simpleLatex() );
+        return new SimpleParameter<T, N> ( value_, description_.simpleLatex(), isHidden_, isExpert_, isNecessary_, order_ );
     }
 
     virtual rapidxml::xml_node<>* appendToNode ( const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
@@ -224,7 +258,7 @@ public:
     virtual void readFromNode ( const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
                                 boost::filesystem::path inputfilepath )
     {
-        std::cout<<"Reading simple "<<name<< std::endl;
+//        std::cout<<"Reading simple "<<name<< std::endl;
         using namespace rapidxml;
         xml_node<>* child = findNode ( node, name );
         if ( child ) {
@@ -257,24 +291,45 @@ typedef SimpleParameter<std::string, StringName> StringParameter;
 class PathParameter
     : public SimpleParameter<boost::filesystem::path, PathName>
 {
+    // store content of file, if packed
     std::string file_content_;
+
 public:
     declareType ( "path" );
 
-    PathParameter ( const std::string& description );
-    PathParameter ( const boost::filesystem::path& value, const std::string& description );
+    PathParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+    PathParameter ( const boost::filesystem::path& value, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0, const char* base64_content = "" );
+
+    virtual boost::filesystem::path& operator() ();
+    virtual const boost::filesystem::path& operator() () const;
+
+    /**
+     * @brief isPacked
+     * check, if contains file contents
+     * @return
+     */
 
     bool isPacked() const;
+
+    /**
+     * @brief pack
+     * pack the external file. Replace stored content, if present.
+     */
     void pack();
+
+    /**
+     * @brief unpack
+     * restore file contents on disk, if file is not there
+     */
     void unpack();
 
     virtual Parameter* clone() const;
 
-//   virtual rapidxml::xml_node<>* appendToNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
-//     boost::filesystem::path inputfilepath) const;
-//
-//   virtual void readFromNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
-//     boost::filesystem::path inputfilepath);
+    virtual rapidxml::xml_node<>* appendToNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
+     boost::filesystem::path inputfilepath) const;
+
+    virtual void readFromNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
+     boost::filesystem::path inputfilepath);
 };
 
 
@@ -292,11 +347,11 @@ public:
 
 
 
-template<> rapidxml::xml_node<>* SimpleParameter<boost::filesystem::path, PathName>::appendToNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node, 
-    boost::filesystem::path inputfilepath) const;
+//template<> rapidxml::xml_node<>* SimpleParameter<boost::filesystem::path, PathName>::appendToNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
+//    boost::filesystem::path inputfilepath) const;
 
-template<> void SimpleParameter<boost::filesystem::path, PathName>::readFromNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node, 
-  boost::filesystem::path inputfilepath);
+//template<> void SimpleParameter<boost::filesystem::path, PathName>::readFromNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
+//  boost::filesystem::path inputfilepath);
 
 
 
@@ -307,8 +362,8 @@ class DirectoryParameter
 public:
     declareType ( "directory" );
 
-    DirectoryParameter ( const std::string& description );
-    DirectoryParameter ( const boost::filesystem::path& value, const std::string& description );
+    DirectoryParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+    DirectoryParameter ( const boost::filesystem::path& value, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
     virtual std::string latexRepresentation() const;
     virtual Parameter* clone() const;
     virtual rapidxml::xml_node<>* appendToNode ( const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
@@ -332,9 +387,9 @@ protected:
 public:
     declareType ( "selection" );
 
-    SelectionParameter ( const std::string& description );
-    SelectionParameter ( const int& value, const ItemList& items, const std::string& description );
-    SelectionParameter ( const std::string& key, const ItemList& items, const std::string& description );
+    SelectionParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+    SelectionParameter ( const int& value, const ItemList& items, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+    SelectionParameter ( const std::string& key, const ItemList& items, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
     virtual ~SelectionParameter();
 
     inline ItemList& items()
@@ -356,6 +411,7 @@ public:
     }
 
     virtual std::string latexRepresentation() const;
+    virtual std::string plainTextRepresentation(int indent=0) const;
 
     virtual Parameter* clone() const;
 
@@ -382,9 +438,9 @@ public:
 
     declareType ( "doubleRange" );
 
-    DoubleRangeParameter ( const std::string& description );
-    DoubleRangeParameter ( const RangeList& value, const std::string& description );
-    DoubleRangeParameter ( double defaultFrom, double defaultTo, int defaultNum, const std::string& description );
+    DoubleRangeParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+    DoubleRangeParameter ( const RangeList& value, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+    DoubleRangeParameter ( double defaultFrom, double defaultTo, int defaultNum, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
     virtual ~DoubleRangeParameter();
 
     inline void insertValue ( double v )
@@ -410,6 +466,7 @@ public:
     }
 
     virtual std::string latexRepresentation() const;
+    virtual std::string plainTextRepresentation(int indent=0) const;
 
     DoubleParameter* toDoubleParameter ( RangeList::const_iterator i ) const;
 
@@ -428,17 +485,17 @@ class ArrayParameter
     : public Parameter
 {
 public:
-    typedef boost::ptr_vector<Parameter> value_type;
+    typedef std::vector<ParameterPtr> value_type;
 
 protected:
-    boost::shared_ptr<Parameter> defaultValue_;
-    boost::ptr_vector<Parameter> value_;
+    ParameterPtr defaultValue_;
+    std::vector<ParameterPtr> value_;
 
 public:
     declareType ( "array" );
 
-    ArrayParameter ( const std::string& description );
-    ArrayParameter ( const Parameter& defaultValue, int size, const std::string& description );
+    ArrayParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+    ArrayParameter ( const Parameter& defaultValue, int size, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
 
     //inline void setParameterSet(const ParameterSet& paramset) { value_.reset(paramset.clone()); }
     inline void setDefaultValue ( const Parameter& defP )
@@ -451,19 +508,19 @@ public:
     }
     inline void appendValue ( const Parameter& np )
     {
-        value_.push_back ( np.clone() );
+        value_.push_back ( ParameterPtr( np.clone() ) );
     }
     inline void appendEmpty()
     {
-        value_.push_back ( defaultValue_->clone() );
+        value_.push_back ( ParameterPtr( defaultValue_->clone() ) );
     }
     inline Parameter& operator[] ( int i )
     {
-        return value_[i];
+        return *(value_[i]);
     }
     inline const Parameter& operator[] ( int i ) const
     {
-        return value_[i];
+        return *(value_[i]);
     }
     inline int size() const
     {
@@ -475,6 +532,11 @@ public:
     }
 
     virtual std::string latexRepresentation() const;
+    virtual std::string plainTextRepresentation(int indent=0) const;
+
+    virtual bool isPacked() const;
+    virtual void pack();
+    virtual void unpack();
 
     virtual Parameter* clone () const;
 
@@ -499,13 +561,14 @@ protected:
 public:
     declareType ( "matrix" );
 
-    MatrixParameter ( const std::string& description );
-    MatrixParameter ( const arma::mat& defaultValue, const std::string& description );
+    MatrixParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+    MatrixParameter ( const arma::mat& defaultValue, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
 
     arma::mat& operator() ();
     const arma::mat& operator() () const;
 
     virtual std::string latexRepresentation() const;
+    virtual std::string plainTextRepresentation(int indent=0) const;
 
     virtual Parameter* clone () const;
 

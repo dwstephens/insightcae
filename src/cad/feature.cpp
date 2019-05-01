@@ -57,7 +57,7 @@ size_t FeatureSet::calcHash() const
   if (base_set_) boost::hash_combine(h, *base_set_);
   boost::hash_combine(h, int(shape_));
   boost::hash_combine(h, filterexpr_);
-  BOOST_FOREACH(const FeatureSetParserArg& arg, refs_)
+  for (const FeatureSetParserArg& arg: refs_)
   {
       if (const FeatureSetPtr *fp = boost::get<FeatureSetPtr>(&arg))
       {
@@ -122,8 +122,8 @@ FeatureSet::FeatureSet
   const FeatureSetParserArgList& refs
 )
 : model_(q->model()),
-  shape_(q->shape()),
   base_set_(q),
+  shape_(q->shape()),
   filterexpr_(filterexpr),
   refs_(refs)
 {}
@@ -296,7 +296,7 @@ FeatureSetPtr FeatureSet::clone() const
 void FeatureSet::write() const
 {
   std::cout<<'[';
-  BOOST_FOREACH(FeatureID i, data_)
+  for (FeatureID i: data_)
   {
     std::cout<<" "<<i;
   }
@@ -307,7 +307,7 @@ void FeatureSet::write() const
 std::ostream& operator<<(std::ostream& os, const FeatureSetData& fsd)
 {
   os<<fsd.size()<<" {";
-  BOOST_FOREACH(int fi, fsd)
+  for (int fi: fsd)
   {
     os<<" "<<fi;
   }

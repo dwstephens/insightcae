@@ -68,12 +68,12 @@ Analysis* PythonAnalysis::PythonAnalysisFactory::operator()
 
 ParameterSet PythonAnalysis::PythonAnalysisFactory::defaultParameters() const
 {
-    aquire_py_GIL locker;
+    acquire_py_GIL locker;
     
     try {
         object main_module(handle<>(borrowed(PyImport_AddModule("__main__"))));
         object main_namespace = main_module.attr("__dict__");
-        handle<> ignore(PyRun_String( 
+        handle<> ignore(PyRun_String(
             boost::str( boost::format("import imp; mod = imp.load_source('module', '%s'); ps=mod.defaultParameters()") % scriptfile_.string() ).c_str(),
             Py_file_input,
             main_namespace.ptr(),
@@ -81,7 +81,7 @@ ParameterSet PythonAnalysis::PythonAnalysisFactory::defaultParameters() const
         );
         object o =  extract<object>(main_namespace["ps"]);
         ParameterSet *psp;
-        static void *descr = 0;
+        static void *descr = nullptr;
         if (!descr) {
             descr = SWIG_TypeQuery("insight::ParameterSet *");    /* Get the type descriptor structure for Foo */
             std::cout<<descr<<std::endl;
@@ -101,12 +101,12 @@ ParameterSet PythonAnalysis::PythonAnalysisFactory::defaultParameters() const
 
 std::string PythonAnalysis::PythonAnalysisFactory::category() const
 {
-    aquire_py_GIL locker;
+    acquire_py_GIL locker;
     
     try {
         object main_module(handle<>(borrowed(PyImport_AddModule("__main__"))));
         object main_namespace = main_module.attr("__dict__");
-        handle<> ignore(PyRun_String( 
+        handle<> ignore(PyRun_String(
             boost::str( boost::format("import imp; mod = imp.load_source('module', '%s'); cat=mod.category()") % scriptfile_.string() ).c_str(),
             Py_file_input,
             main_namespace.ptr(),
@@ -134,11 +134,11 @@ ResultSetPtr PythonAnalysis::operator() ( ProgressDisplayer* )
 {
     setupExecutionEnvironment();
     
-    aquire_py_GIL locker;
+    acquire_py_GIL locker;
     
     try {
         
-        static void *descr = 0;
+        static void *descr = nullptr;
         if (!descr) {
             descr = SWIG_TypeQuery("insight::ParameterSet *");    /* Get the type descriptor structure for Foo */
             assert(descr);
@@ -156,7 +156,7 @@ ResultSetPtr PythonAnalysis::operator() ( ProgressDisplayer* )
         main_module.attr("parameters")=python::borrowed(paramobj);
         main_module.attr("workdir")=executionPath_.string();
         
-        handle<> ignore(PyRun_String( 
+        handle<> ignore(PyRun_String(
             boost::str( boost::format(
                 "import imp;"
                 "mod = imp.load_source('module', '%s');"
@@ -168,16 +168,16 @@ ResultSetPtr PythonAnalysis::operator() ( ProgressDisplayer* )
         );
         
         object o =  extract<object>(main_namespace["result"]);
-        ResultSet *res;
-        descr=0;
+        ResultSetPtr *res;
+        descr=nullptr;
         if (!descr) {
-            descr = SWIG_TypeQuery("insight::ResultSet *");    /* Get the type descriptor structure for Foo */
+            descr = SWIG_TypeQuery("insight::ResultSetPtr *");    /* Get the type descriptor structure for Foo */
             assert(descr);
         }
         if ((SWIG_ConvertPtr(o.ptr(), (void **) &res, descr, 0) == -1)) {
             throw insight::Exception("Could not convert return value!");
         }
-        return ResultSetPtr(new ResultSet(*res));
+        return ResultSetPtr(*res);
     }
     catch (const error_already_set &)
     {
@@ -194,9 +194,8 @@ ResultSetPtr PythonAnalysis::operator() ( ProgressDisplayer* )
 
 PythonAnalysisLoader::PythonAnalysisLoader()
 {
-
     SharedPathList paths;
-    BOOST_FOREACH ( const path& p, /*SharedPathList::searchPathList*/paths ) {
+    for ( const path& p: /*SharedPathList::searchPathList*/paths ) {
         if ( exists(p) && is_directory ( p ) ) {
 	  
             path pydir ( p );
@@ -207,21 +206,21 @@ PythonAnalysisLoader::PythonAnalysisLoader()
                         itr != end_itr;
                         ++itr ) {
                     if ( is_regular_file ( itr->status() ) ) {
-                        if ( itr->path().extension() == ".py" ) 
+                        if ( itr->path().extension() == ".py" )
                         {
                             if (!Analysis::factories_)
                             {
-                                Analysis::factories_=new Analysis::FactoryTable(); 
+                                Analysis::factories_=new Analysis::FactoryTable();
                             }
                             PythonAnalysis::PythonAnalysisFactoryPtr fac(new PythonAnalysis::PythonAnalysisFactory( itr->path() ) );
                             
-                            std::string key(itr->path().stem().string()); 
+                            std::string key(itr->path().stem().string());
                             (*Analysis::factories_)[key]=fac.get();
 
-                            if (!Analysis::defaultParametersFunctions_) 
+                            if (!Analysis::defaultParametersFunctions_)
                              { Analysis::defaultParametersFunctions_ = new Analysis::defaultParametersFunctionTable(); }
                             (*Analysis::defaultParametersFunctions_)[key] = fac->defaultParametersWrapper_;
-                            if (!Analysis::categoryFunctions_) 
+                            if (!Analysis::categoryFunctions_)
                              { Analysis::categoryFunctions_ = new Analysis::categoryFunctionTable(); }
                             (*Analysis::categoryFunctions_)[key] = fac->categoryWrapper_;
                             

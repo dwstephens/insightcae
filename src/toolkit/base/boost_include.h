@@ -93,8 +93,21 @@
 #include "boost/function.hpp"
 
 #include "boost/timer/timer.hpp"
+
+#include <functional>
 #endif
 
 typedef boost::filesystem::path bfs_path;
+
+namespace boost
+{
+namespace filesystem
+{
+
+boost::filesystem::path
+    make_relative( boost::filesystem::path a_From, boost::filesystem::path a_To );
+
+}
+}
 
 #endif

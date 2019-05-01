@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Service
+MimeType=application/insight-foam;
+ServiceTypes=KonqPopupMenu/Plugin
+Actions=remoteshell;remotepv;
+Encoding=UTF-8
+X-KDE-Priority=TopLevel
+X-KDE-Submenu=OpenFOAM
+
+[Desktop Action remoteshell]
+Exec="bash -lc 'isRemoteShell.sh'"
+Icon=utilities-terminal
+Name=Shell in Remote Directory
+Name[de]=Shell auf entfernter Maschine ausführen
+
+[Desktop Action remotepv]
+Exec="bash -lc 'isPVRemote.sh'"
+Icon=utilities-terminal
+Name=Paraview Server/Client

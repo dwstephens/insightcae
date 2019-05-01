@@ -30,6 +30,13 @@
 #include "base/boost_include.h"
 
 #include <QSignalMapper>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QGroupBox>
+#include <QPushButton>
+#include <QCheckBox>
+
+#include "base/qt5_helper.h"
 
 #include "modelfeature.h"
 #include "modelcomponentselectordlg.h"
@@ -49,39 +56,45 @@ ISCADModel::ISCADModel(QWidget* parent, bool dobgparsing)
   bgparsethread_(),
   skipPostprocActions_(true)
 {
-    setFontFamily("Monospace");
+    setFontFamily("Courier New");
     setContextMenuPolicy(Qt::CustomContextMenu);
+
+    QFontMetrics fm(this->font());
+    sizehint_=QSize(
+          3*fm.width("abcdefghijklmnopqrstuvwxyz_-+*"),
+          fm.height()
+        );
     
     connect
         (
-          this, SIGNAL(selectionChanged()),
-          this, SLOT(onEditorSelectionChanged())
+          this, &ISCADModel::selectionChanged,
+          this, &ISCADModel::onEditorSelectionChanged
         );
 
     connect
         (
-          this, SIGNAL(customContextMenuRequested(const QPoint&)),
-          this, SLOT(showEditorContextMenu(const QPoint&))
+          this, &ISCADModel::customContextMenuRequested,
+          this, &ISCADModel::showEditorContextMenu
         );
 
     highlighter_=new ISCADSyntaxHighlighter(document());
 
-    connect(&bgparsethread_, SIGNAL(finished()),
-            this, SLOT(onBgParseFinished()));
-    connect(&bgparsethread_, SIGNAL(statusMessage(const QString&)),
-            this, SIGNAL(displayStatusMessage(const QString&)));
-    connect(&bgparsethread_, SIGNAL(statusProgress(int, int)),
-            this, SIGNAL(statusProgress(int, int)));
-    connect(&bgparsethread_, SIGNAL(scriptError(long,const QString&, int)),
-            this, SLOT(onScriptError(long,const QString&, int)));
+    connect(&bgparsethread_, &BGParsingThread::finished,
+            this, &ISCADModel::onBgParseFinished);
+    connect(&bgparsethread_, &BGParsingThread::statusMessage,
+            this, &ISCADModel::displayStatusMessage);
+    connect(&bgparsethread_, &BGParsingThread::statusProgress,
+            this, &ISCADModel::statusProgress);
+    connect(&bgparsethread_, &BGParsingThread::scriptError,
+            this, &ISCADModel::onScriptError);
     bgparseTimer_=new QTimer(this);
-    connect(bgparseTimer_, SIGNAL(timeout()), this, SLOT(doBgParse()));
+    connect(bgparseTimer_, &QTimer::timeout, this, &ISCADModel::doBgParse);
     restartBgParseTimer();
 
-    connect(document(), SIGNAL(contentsChange(int,int,int)),
-            this, SLOT(restartBgParseTimer(int,int,int)));
-    connect(document(), SIGNAL(contentsChange(int,int,int)),
-            this, SLOT(setUnsavedState(int,int,int)));
+    connect(document(), &QTextDocument::contentsChange,
+            this, &ISCADModel::restartBgParseTimer);
+    connect(document(), &QTextDocument::contentsChange,
+            this, &ISCADModel::setUnsavedState);
 
 }
 
@@ -175,21 +188,32 @@ void ISCADModel::setScript(const std::string& contents)
 
     connect
         (
-          document(), SIGNAL(contentsChange(int,int,int)),
-          this, SLOT(setUnsavedState(int,int,int))
+          document(), &QTextDocument::contentsChange,
+          this, &ISCADModel::setUnsavedState
         );
 }
 
 
 void ISCADModel::onEditorSelectionChanged()
 {
-    QTextDocument *doc = document();
+    disconnect
+    (
+      this, &ISCADModel::selectionChanged,
+      this, &ISCADModel::onEditorSelectionChanged
+    );
+
     QString word=textCursor().selectedText();
-    if (!(word.contains('|')||word.contains('*')))
+    if ( !( word.contains('|') || word.contains('*') ) )
     {
         highlighter_->setHighlightWord(word);
         highlighter_->rehighlight();
     }
+
+    connect
+    (
+      this, &ISCADModel::selectionChanged,
+      this, &ISCADModel::onEditorSelectionChanged
+    );
 }
 
 
@@ -275,7 +299,7 @@ void ISCADModel::populateClipPlaneMenu(QMenu* clipplanemenu, QoccViewWidget* vie
     {
         int added=0;
         insight::cad::Model::DatumTableContents datums = cur_model_->datums();
-        BOOST_FOREACH(insight::cad::Model::DatumTableContents::value_type const& v, datums)
+        for (insight::cad::Model::DatumTableContents::value_type const& v: datums)
         {
             insight::cad::DatumPtr d = v.second;
             if (d->providesPlanarReference())
@@ -286,13 +310,13 @@ void ISCADModel::populateClipPlaneMenu(QMenu* clipplanemenu, QoccViewWidget* vie
                 signalMapper->setMapping( act, reinterpret_cast<QObject*>(d.get()) );
                 connect
                     (
-                      signalMapper, SIGNAL(mapped(QObject*)),
-                      viewer, SLOT(onSetClipPlane(QObject*))
+                      signalMapper, QOverload<QObject*>::of(&QSignalMapper::mapped),
+                      viewer, &QoccViewWidget::onSetClipPlane
                     );
                 connect
                     (
-                      act, SIGNAL(triggered()),
-                      signalMapper, SLOT(map())
+                      act, &QAction::triggered,
+                      signalMapper, QOverload<>::of(&QSignalMapper::map)
                     );
                 clipplanemenu->addAction(act);
                 
@@ -315,33 +339,39 @@ void ISCADModel::populateClipPlaneMenu(QMenu* clipplanemenu, QoccViewWidget* vie
 
 void ISCADModel::connectModelTree(QModelTree* mt) const
 {
-  connect(&bgparsethread_, SIGNAL(createdVariable(const QString&,insight::cad::ScalarPtr)),
-          mt, SLOT(onAddScalar(const QString&,insight::cad::ScalarPtr)));
-  connect(&bgparsethread_, SIGNAL(createdVariable(const QString&,insight::cad::VectorPtr)),
-          mt, SLOT(onAddVector(const QString&,insight::cad::VectorPtr)));
-  connect(&bgparsethread_, SIGNAL(createdFeature(const QString&,insight::cad::FeaturePtr,bool)),
-          mt, SLOT(onAddFeature(const QString&,insight::cad::FeaturePtr,bool)));
-  connect(&bgparsethread_, SIGNAL(createdDatum(QString,insight::cad::DatumPtr)),
-          mt, SLOT(onAddDatum(const QString&,insight::cad::DatumPtr)));
-  connect(&bgparsethread_, SIGNAL(createdEvaluation(const QString&,insight::cad::PostprocActionPtr)),
-          mt, SLOT(onAddEvaluation(const QString&,insight::cad::PostprocActionPtr)));
+  connect(&bgparsethread_, QOverload<const QString&,insight::cad::ScalarPtr>::of(&BGParsingThread::createdVariable),
+          mt, &QModelTree::onAddScalar);
+  connect(&bgparsethread_, QOverload<const QString&,insight::cad::VectorPtr>::of(&BGParsingThread::createdVariable),
+          mt, &QModelTree::onAddVector);
+  connect(&bgparsethread_, &BGParsingThread::createdFeature,
+          mt, &QModelTree::onAddFeature);
+  connect(&bgparsethread_, &BGParsingThread::createdDatum,
+          mt, &QModelTree::onAddDatum);
+  connect(&bgparsethread_, &BGParsingThread::createdEvaluation,
+          mt, &QModelTree::onAddEvaluation );
 
-  connect(&bgparsethread_, SIGNAL(removedScalar(const QString&)),
-          mt, SLOT(onRemoveScalar(const QString&)));
-  connect(&bgparsethread_, SIGNAL(removedVector(const QString&)),
-          mt, SLOT(onRemoveVector(const QString&)));
-  connect(&bgparsethread_, SIGNAL(removedFeature(const QString&)),
-          mt, SLOT(onRemoveFeature(const QString&)));
-  connect(&bgparsethread_, SIGNAL(removedDatum(const QString&)),
-          mt, SLOT(onRemoveDatum(const QString&)));
-  connect(&bgparsethread_, SIGNAL(removedEvaluation(const QString&)),
-          mt, SLOT(onRemoveEvaluation(const QString&)));
+  connect(&bgparsethread_, &BGParsingThread::removedScalar,
+          mt, &QModelTree::onRemoveScalar);
+  connect(&bgparsethread_, &BGParsingThread::removedVector,
+          mt, &QModelTree::onRemoveVector);
+  connect(&bgparsethread_, &BGParsingThread::removedFeature,
+          mt, &QModelTree::onRemoveFeature);
+  connect(&bgparsethread_, &BGParsingThread::removedDatum,
+          mt, &QModelTree::onRemoveDatum);
+  connect(&bgparsethread_, &BGParsingThread::removedEvaluation,
+          mt, &QModelTree::onRemoveEvaluation);
 
-  connect(mt, SIGNAL(jumpTo(QString)),
-          this, SLOT(jumpTo(QString)));
-  connect(mt, SIGNAL(insertParserStatementAtCursor(QString)),
-          this, SLOT(insertTextAtCursor(QString)));
+  connect(mt, &QModelTree::jumpTo,
+          this, &ISCADModel::jumpTo);
+  connect(mt, &QModelTree::insertParserStatementAtCursor,
+          this, &ISCADModel::insertTextAtCursor);
 
+}
+
+
+QSize ISCADModel::sizeHint() const
+{
+  return sizehint_;
 }
 
 
@@ -479,15 +509,15 @@ void ISCADModel::showEditorContextMenu(const QPoint& pt)
             {
                 act=new QAction("Edit Sketch...", this);
                 signalMapper->setMapping(act, reinterpret_cast<QObject*>(sk));
-                connect(signalMapper, SIGNAL(mapped(QObject*)),
-                        this, SLOT(editSketch(QObject*)));
+                connect(signalMapper, QOverload<QObject*>::of(&QSignalMapper::mapped),
+                        this, &ISCADModel::editSketch);
             }
             else if (insight::cad::ModelFeature* mo=dynamic_cast<insight::cad::ModelFeature*>(fpp))
             {
                 act=new QAction("Edit Model...", this);
                 signalMapper->setMapping(act, reinterpret_cast<QObject*>(mo));
-                connect(signalMapper, SIGNAL(mapped(QObject*)),
-                        this, SLOT(editModel(QObject*)));
+                connect(signalMapper, QOverload<QObject*>::of(&QSignalMapper::mapped),
+                        this, &ISCADModel::editModel);
             }
             else
             {
@@ -496,8 +526,8 @@ void ISCADModel::showEditorContextMenu(const QPoint& pt)
 
             if (act)
             {
-                connect(act, SIGNAL(triggered()),
-                        signalMapper, SLOT(map()));
+                connect(act, &QAction::triggered,
+                        signalMapper, QOverload<>::of(&QSignalMapper::map));
                 menu->addSeparator();
                 menu->addAction(act);
             }
@@ -581,18 +611,23 @@ ISCADModelEditor::ISCADModelEditor(QWidget* parent)
     layout->addWidget(spl);
 
     context_=new QoccViewerContext;
-    viewer_=new QoccViewWidget(context_->getContext(), spl);
+    viewer_=new QoccViewWidget(spl, context_->getContext());
+    viewer_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     spl->addWidget(viewer_);
     
     model_=new ISCADModel(spl);
+    model_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     spl->addWidget(model_);
 
     QSplitter* spl2=new QSplitter(Qt::Vertical, spl);
+    spl2->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
     QGroupBox *gb;
     QVBoxLayout *vbox;
 
 
     gb=new QGroupBox("Controls");
+    gb->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+
     vbox = new QVBoxLayout;
     QWidget*shw=new QWidget;
     QHBoxLayout *shbox = new QHBoxLayout;
@@ -612,10 +647,10 @@ ISCADModelEditor::ISCADModelEditor(QWidget* parent)
     vbox->addWidget(toggleSkipPostprocActions);
     
     gb->setLayout(vbox);
-//    gb->setSizePolicy(QSizePolicy(QSizePolicy::Minimum, QSizePolicy::Minimum));
     spl2->addWidget(gb);
 
     gb=new QGroupBox("Model Tree");
+    gb->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     vbox = new QVBoxLayout;
     modeltree_=new QModelTree(gb);
     modeltree_->setMinimumHeight(20);
@@ -628,60 +663,79 @@ ISCADModelEditor::ISCADModelEditor(QWidget* parent)
     notepad_=new QTextEdit;
 
     vbox->addWidget(notepad_);
+    QHBoxLayout *ll=new QHBoxLayout;
     QPushButton* copybtn=new QPushButton("<< Copy to cursor <<");
-    vbox->addWidget(copybtn);
+    ll->addWidget(copybtn);
+    QPushButton* clearbtn=new QPushButton("Clear");
+    ll->addWidget(clearbtn);
+    vbox->addLayout(ll);
     gb->setLayout(vbox);
     spl2->addWidget(gb);
 
+    spl2->setStretchFactor(0,0);
+    spl2->setStretchFactor(1,4);
+    spl2->setStretchFactor(2,0);
+
     spl->addWidget(spl2);
-    
-    {
-      QList<int> sizes;
-      sizes << 4700 << 3500 << 1700;
-      spl->setSizes(sizes);
-    }
 
-    {
-      QList<int> sizes;
-      sizes << 2000 << 6000 << 2000;
-      spl2->setSizes(sizes);
-    }
+    spl->setStretchFactor(0,4);
+    spl->setStretchFactor(1,3);
+    spl->setStretchFactor(2,0);
+
+//    {
+//      QList<int> sizes;
+//      sizes << 4700 << 3500 << 1700;
+//      spl->setSizes(sizes);
+//    }
+
+//    {
+//      QList<int> sizes;
+//      sizes << 2000 << 6000 << 2000;
+//      spl2->setSizes(sizes);
+//    }
 
 
-    connect(rebuildBtn, SIGNAL(clicked()),
-            model_, SLOT(rebuildModel()));
-    connect(rebuildBtnUTC, SIGNAL(clicked()),
-            model_, SLOT(rebuildModelUpToCursor()));
-    connect(toggleBgParse, SIGNAL(stateChanged(int)),
-            model_, SLOT(toggleBgParsing(int)));
-    connect(toggleSkipPostprocActions, SIGNAL(stateChanged(int)),
-            model_, SLOT(toggleSkipPostprocActions(int)));
+    connect(rebuildBtn, &QPushButton::clicked,
+            model_, &ISCADModel::rebuildModel);
+    connect(rebuildBtnUTC, &QPushButton::clicked,
+            model_, &ISCADModel::rebuildModelUpToCursor);
+    connect(toggleBgParse, &QCheckBox::stateChanged,
+            model_, &ISCADModel::toggleBgParsing);
+    connect(toggleSkipPostprocActions, &QCheckBox::stateChanged,
+            model_, &ISCADModel::toggleSkipPostprocActions);
 
-    connect(copybtn, SIGNAL(clicked()),
-            this, SLOT(onCopyBtnClicked()));
+    connect(copybtn, &QPushButton::clicked,
+            this, &ISCADModelEditor::onCopyBtnClicked);
+    connect(clearbtn, &QPushButton::clicked,
+            notepad_, &QTextEdit::clear);
 
     model_->connectModelTree(modeltree_);
 
-    connect(modeltree_, SIGNAL(show(QDisplayableModelTreeItem*)),
-            viewer_, SLOT(onShow(QDisplayableModelTreeItem*)));
-    connect(modeltree_, SIGNAL(hide(QDisplayableModelTreeItem*)),
-            viewer_, SLOT(onHide(QDisplayableModelTreeItem*)));
-    connect(modeltree_, SIGNAL(setDisplayMode(QDisplayableModelTreeItem*, AIS_DisplayMode)),
-            viewer_, SLOT(onSetDisplayMode(QDisplayableModelTreeItem*, AIS_DisplayMode)));
-    connect(modeltree_, SIGNAL(setColor(QDisplayableModelTreeItem*, Quantity_Color)),
-            viewer_, SLOT(onSetColor(QDisplayableModelTreeItem*, Quantity_Color)));
-    connect(modeltree_, SIGNAL(setResolution(QDisplayableModelTreeItem*, double)),
-            viewer_, SLOT(onSetResolution(QDisplayableModelTreeItem*, double)));
+    connect(modeltree_, &QModelTree::show,
+            viewer_, &QoccViewWidget::onShow/*(QDisplayableModelTreeItem*)*/);
+    connect(modeltree_, &QModelTree::hide/*(QDisplayableModelTreeItem*)*/,
+            viewer_, &QoccViewWidget::onHide);
+    connect(modeltree_, &QModelTree::setDisplayMode/*(QDisplayableModelTreeItem*, AIS_DisplayMode)*/,
+            viewer_, &QoccViewWidget::onSetDisplayMode);
+    connect(modeltree_, &QModelTree::setColor/*(QDisplayableModelTreeItem*, Quantity_Color)*/,
+            viewer_, &QoccViewWidget::onSetColor);
+    connect(modeltree_, &QModelTree::setResolution/*(QDisplayableModelTreeItem*, double)*/,
+            viewer_, &QoccViewWidget::onSetResolution);
+    connect(modeltree_, &QModelTree::focus,
+            viewer_, &QoccViewWidget::onFocus);
+    connect(modeltree_, &QModelTree::unfocus,
+            viewer_, &QoccViewWidget::onUnfocus);
+    connect(modeltree_, &QModelTree::insertIntoNotebook,
+            this, &ISCADModelEditor::onInsertNotebookText);
 
-    connect(model_, SIGNAL(updateTitle(boost::filesystem::path,bool)),
-            this, SLOT(onUpdateTitle(boost::filesystem::path,bool)));
+    connect(model_, &ISCADModel::updateTitle,
+            this, &ISCADModelEditor::onUpdateTitle);
 
-    connect(viewer_, SIGNAL(addEvaluationToModel(QString,insight::cad::PostprocActionPtr, bool)),
-            modeltree_, SLOT(onAddEvaluation(QString,insight::cad::PostprocActionPtr, bool)));
+    connect(viewer_, &QoccViewWidget::addEvaluationToModel/*(QString,insight::cad::PostprocActionPtr, bool)*/,
+            modeltree_, &QModelTree::onAddEvaluation);
 
-    connect(viewer_, SIGNAL(insertNotebookText(QString)),
-            this, SLOT(onInsertNotebookText(QString)));
-
+    connect(viewer_, &QoccViewWidget::insertNotebookText,
+            this, &ISCADModelEditor::onInsertNotebookText);
 }
 
 

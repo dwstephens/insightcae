@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.1)
 
 enable_language (C)
 enable_language (CXX)
@@ -65,64 +65,18 @@ SET(CPACK_PACKAGE_CONTACT "hannes.kroeger@silentdynamics.de")
 SET(CPACK_PACKAGE_DESCRIPTION_SUMMARY "a workbench for Computer-Aided Engineering")
 SET(CPACK_PACKAGE_VERSION_MAJOR "1")
 SET(CPACK_PACKAGE_VERSION_MINOR "0")
+
 execute_process(
   COMMAND git rev-list --count HEAD
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  OUTPUT_VARIABLE CPACK_PACKAGE_VERSION_PATCH
+  OUTPUT_VARIABLE git-rev
   OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-SET(CPACK_PACKAGE_INSTALL_DIRECTORY "CMake ${CMake_VERSION_MAJOR}.${CMake_VERSION_MINOR}")
-
+message(STATUS "git-rev base: ${git-rev}")
 
 string(TOLOWER "${CPACK_PACKAGE_NAME}" CPACK_PACKAGE_NAME_LOWERCASE)
 find_program(DPKG_PROGRAM dpkg DOC "dpkg program of Debian-based systems")
-set(PACKAGE_VERSION ${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH})
-if(DPKG_PROGRAM)
-  SET(CPACK_GENERATOR "DEB")
-  set (CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-  execute_process(
-    COMMAND ${DPKG_PROGRAM} --print-architecture
-    OUTPUT_VARIABLE CPACK_DEBIAN_PACKAGE_ARCHITECTURE
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
-  set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME_LOWERCASE}_${PACKAGE_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
-  set(CPACK_DEBIAN_PACKAGE_DEPENDS "gnuplot,python-numpy,python-scipy,python-matplotlib,texlive-base,texlive-latex-extra,imagemagick,texlive-fonts-recommended,texlive-font-utils,xdg-utils")
-  if (INSIGHT_BUILD_OPENFOAM)
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},openfoamplus-insightcae,paraview-insightcae|paraview-offscreen-insightcae,openmpi-bin")
-  endif()
-#   if (INSIGHT_BUILD_CODEASTER)
-#     set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},codeaster-insightcae")
-#   endif()
-  if (INSIGHT_BUILD_CAD OR INSIGHT_BUILD_FREECAD)
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},liboce-insightcae,freecad-insightcae")
-  endif()
-  if (INSIGHT_BUILD_CAD)
-    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},libdxflib (>=3.7.5)")
-  endif()
-else(DPKG_PROGRAM)
- if(EXISTS /etc/redhat-release)
-   SET(CPACK_GENERATOR "RPM")
-   execute_process(
-     COMMAND uname -m
-     OUTPUT_VARIABLE CPACK_RPM_PACKAGE_ARCHITECTURE
-     OUTPUT_STRIP_TRAILING_WHITESPACE
-   )
-   set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME_LOWERCASE}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}-${CPACK_PACKAGE_VERSION_PATCH}.${CPACK_RPM_PACKAGE_ARCHITECTURE}")
-  set(CPACK_RPM_PACKAGE_REQUIRES "/usr/bin/gnuplot-wx,/usr/bin/pdflatex,/usr/bin/convert") #numpy,scipy,matplotlib
-  if (INSIGHT_BUILD_OPENFOAM)
-    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES},/usr/bin/pvbatch")
-#   if (INSIGHT_BUILD_CODEASTER)
-#     set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES}, codeaster-insightcae")
-#   endif()
-  endif()
-  if (INSIGHT_BUILD_CAD OR INSIGHT_BUILD_FREECAD)
-    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES},/usr/bin/FreeCAD")
-  endif()
-#  if (INSIGHT_BUILD_CAD)
-#    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES}, libdxflib >=3.7.5")
-#  endif()
- endif()
-endif(DPKG_PROGRAM)
+
 
 add_subdirectory(src/desktop)
 
@@ -181,7 +135,8 @@ if (INSIGHT_BUILD_OPENFOAM)
     find_package(OpenFOAM-301)
     find_package(OpenFOAM-plus)
     find_package(OpenFOAM-dev)
-    
+    find_package(OpenFOAM-esi1806)
+
     join("${INSIGHT_OFES_VARCONTENT}" ":" INSIGHT_OFES)
     message(STATUS "\"${INSIGHT_OFES}\"")
     
@@ -199,8 +154,8 @@ ENDIF()
 
 
 ADD_DEFINITIONS(
-    #-std=c++11 # Or -std=c++0x
-    -std=c++0x
+    -std=c++11 # Or -std=c++0x
+    #-std=c++0x
     -Wno-old-style-cast
     -ftemplate-depth=900
     -fpermissive 
@@ -248,6 +203,9 @@ macro(version_list_OF)
     endif()
     if (OFdev_FOUND)
       list (APPEND OF_VERSIONS OFdev)
+    endif()
+    if (OFesi1806_FOUND)
+      list (APPEND OF_VERSIONS OFesi1806)
     endif()
   endif()
 endmacro(version_list_OF)
@@ -394,6 +352,15 @@ macro(setup_exe_target_OF PRJ_NAME sources of_include_dirs of_libs include_dirs 
 	"${${PRJ_NAME}_INCLUDE_DIRS}"
 	"${${PRJ_NAME}_LIBRARIES}"
       ) 
+    endif()
+    if (${_ofvers} STREQUAL "OFesi1806")
+      setup_exe_target_OFesi1806(
+        ${PRJ_NAME}${_ofvers}
+        "${sources}"
+        "${PRJ_NAME}"
+        "${${PRJ_NAME}_INCLUDE_DIRS}"
+        "${${PRJ_NAME}_LIBRARIES}"
+      )
     endif()
    endif()
   endforeach()
@@ -544,6 +511,15 @@ macro(setup_lib_target_OF PRJ_NAME sources of_include_dirs of_libs include_dirs 
 	"${${PRJ_NAME}_LIBRARIES}"
       ) 
     endif()
+    if (${_ofvers} STREQUAL "OFesi1806")
+      setup_lib_target_OFesi1806(
+        ${PRJ_NAME}${_ofvers}
+        "${sources}"
+        "${PRJ_NAME}"
+        "${${PRJ_NAME}_INCLUDE_DIRS}"
+        "${${PRJ_NAME}_LIBRARIES}"
+      )
+    endif()
    endif()
   endforeach()
 endmacro(setup_lib_target_OF)
@@ -685,7 +661,7 @@ macro (add_pybindings TARGETNAME IFFILES LIBS)
     SET(${TARGETNAME}_INTERFACES ${IFFILES})
     SET(CMAKE_SWIG_FLAGS "")
     SET_SOURCE_FILES_PROPERTIES(${${TARGETNAME}_INTERFACES} PROPERTIES CPLUSPLUS ON)
-    SWIG_ADD_MODULE(${TARGETNAME} python ${${TARGETNAME}_INTERFACES})
+    SWIG_ADD_LIBRARY(${TARGETNAME} LANGUAGE python SOURCES ${${TARGETNAME}_INTERFACES})
     SWIG_LINK_LIBRARIES(${TARGETNAME} ${LIBS})
     set_target_properties(${SWIG_MODULE_${TARGETNAME}_REAL_NAME} PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/share/insight/python/Insight)
   ENDIF()
@@ -694,7 +670,7 @@ endmacro()
 macro (add_PDL TARGETNAME HEADERS)
   foreach (_hdr ${HEADERS})
     get_filename_component(BN ${_hdr} NAME_WE)
-    message(STATUS ${_hdr} ${BN})
+    #message(STATUS ${_hdr} ${BN})
     list (APPEND ${TARGETNAME}_TIMESTAMPS ${BN}_pdl.timestamp)
     ADD_CUSTOM_COMMAND( OUTPUT ${BN}_pdl.timestamp
 			COMMAND ${CMAKE_SOURCE_DIR}/gen-sets.py "${_hdr}" "${CMAKE_BINARY_DIR}/bin/pdl"
@@ -712,5 +688,75 @@ endmacro(add_PDL)
 
 add_subdirectory(src)
 add_subdirectory(share)
+
+SET(CPACK_PACKAGE_VERSION_PATCH ${git-rev})
+SET(CPACK_PACKAGE_INSTALL_DIRECTORY "CMake ${CMake_VERSION_MAJOR}.${CMake_VERSION_MINOR}")
+
+set(PACKAGE_VERSION ${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH})
+if(DPKG_PROGRAM)
+
+  SET(CPACK_GENERATOR "DEB")
+  set (CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+  execute_process(
+    COMMAND ${DPKG_PROGRAM} --print-architecture
+    OUTPUT_VARIABLE CPACK_DEBIAN_PACKAGE_ARCHITECTURE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  execute_process(
+    COMMAND lsb_release -rs
+    OUTPUT_VARIABLE CPACK_DEBIAN_SYSTEM_DISTRIBUTION_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  execute_process(
+    COMMAND bash -c "lsb_release -as 2>/dev/null|sed -n '1p'|tr -d '\n'|tr '[:lower:][:upper:]' '[:lower:][:lower:]'"
+    OUTPUT_VARIABLE CPACK_DEBIAN_SYSTEM_DISTRIBUTION_NAME
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+
+  set(CPACK_PACKAGE_VERSION_PATCH ${CPACK_PACKAGE_VERSION_PATCH}~${CPACK_DEBIAN_SYSTEM_DISTRIBUTION_NAME}${CPACK_DEBIAN_SYSTEM_DISTRIBUTION_VERSION})
+  set(PACKAGE_VERSION ${PACKAGE_VERSION}~${CPACK_DEBIAN_SYSTEM_DISTRIBUTION_NAME}${CPACK_DEBIAN_SYSTEM_DISTRIBUTION_VERSION})
+  message(STATUS "Package version: ${PACKAGE_VERSION}")
+
+  set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME_LOWERCASE}_${PACKAGE_VERSION}_${CPACK_DEBIAN_PACKAGE_ARCHITECTURE}")
+  set(CPACK_DEBIAN_PACKAGE_DEPENDS "gnuplot,python-numpy,python-scipy,python-matplotlib,texlive-base,texlive-latex-extra,imagemagick,texlive-fonts-recommended,texlive-font-utils,xdg-utils")
+  if (INSIGHT_BUILD_OPENFOAM)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},openfoamesi1806-insightcae,paraview-insightcae|paraview-offscreen-insightcae,openmpi-bin")
+  endif()
+#   if (INSIGHT_BUILD_CODEASTER)
+#     set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},codeaster-insightcae")
+#   endif()
+  if (INSIGHT_BUILD_CAD OR INSIGHT_BUILD_FREECAD)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},liboce-insightcae,freecad-insightcae")
+  endif()
+  if (INSIGHT_BUILD_CAD)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "${CPACK_DEBIAN_PACKAGE_DEPENDS},libdxflib (>=3.7.5)")
+  endif()
+
+else(DPKG_PROGRAM)
+
+ if(EXISTS /etc/redhat-release)
+   SET(CPACK_GENERATOR "RPM")
+   execute_process(
+     COMMAND uname -m
+     OUTPUT_VARIABLE CPACK_RPM_PACKAGE_ARCHITECTURE
+     OUTPUT_STRIP_TRAILING_WHITESPACE
+   )
+   set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME_LOWERCASE}-${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}-${CPACK_PACKAGE_VERSION_PATCH}.${CPACK_RPM_PACKAGE_ARCHITECTURE}")
+  set(CPACK_RPM_PACKAGE_REQUIRES "/usr/bin/gnuplot-wx,/usr/bin/pdflatex,/usr/bin/convert") #numpy,scipy,matplotlib
+  if (INSIGHT_BUILD_OPENFOAM)
+    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES},/usr/bin/pvbatch")
+#   if (INSIGHT_BUILD_CODEASTER)
+#     set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES}, codeaster-insightcae")
+#   endif()
+  endif()
+  if (INSIGHT_BUILD_CAD OR INSIGHT_BUILD_FREECAD)
+    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES},/usr/bin/FreeCAD")
+  endif()
+#  if (INSIGHT_BUILD_CAD)
+#    set(CPACK_RPM_PACKAGE_REQUIRES "${CPACK_RPM_PACKAGE_REQUIRES}, libdxflib >=3.7.5")
+#  endif()
+ endif()
+
+endif(DPKG_PROGRAM)
 
 INCLUDE(CPack)

@@ -58,13 +58,13 @@ public:
     
     std::string category() const;
   };
-  typedef boost::shared_ptr<PythonAnalysisFactory> PythonAnalysisFactoryPtr;
+  typedef std::shared_ptr<PythonAnalysisFactory> PythonAnalysisFactoryPtr;
   
   static std::set<PythonAnalysisFactoryPtr> pythonAnalysisFactories_;
 
 public:
     PythonAnalysis(const boost::filesystem::path& scriptfile, const ParameterSet& ps, const boost::filesystem::path& exePath );
-    virtual ResultSetPtr operator() ( ProgressDisplayer* displayer=NULL );
+    virtual ResultSetPtr operator() ( ProgressDisplayer* displayer = nullptr );
 };
 
 

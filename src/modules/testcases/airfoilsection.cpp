@@ -124,7 +124,9 @@ void AirfoilSection::createMesh(insight::OpenFOAMCase& cm)
 
   path dir = executionPath();
     
-  cm.insert(new MeshingNumerics(cm));
+  cm.insert(new MeshingNumerics(cm, MeshingNumerics::Parameters()
+    .set_np(p.OpenFOAMAnalysis::Parameters::run.np)
+  ));
   
   using namespace insight::bmd;
   std::auto_ptr<blockMesh> bmd(new blockMesh(cm));
@@ -231,7 +233,9 @@ void AirfoilSection::createMesh(insight::OpenFOAMCase& cm)
   extrude2DMesh
   (
     cm, dir,
-    fb_
+    fb_,
+    "", false, 1.0,
+    vec3(0,0,0.5), vec3(0,0,1)
   );
 }
 
@@ -248,16 +252,27 @@ void AirfoilSection::createCase(insight::OpenFOAMCase& cm)
   cm.parseBoundaryDict(dir, boundaryDict);
 
   cm.insert(new simpleFoamNumerics(cm, simpleFoamNumerics::Parameters()
+    .set_checkResiduals(false)
     .set_purgeWrite(2)
     .set_endTime(5000)
+    .set_np(p.OpenFOAMAnalysis::Parameters::run.np)
   )); 
   
+  std::string force_fo_name("foilForces");
+
   cm.insert(new forces(cm, forces::Parameters()
-    .set_name("foilForces")
+    .set_name(force_fo_name)
     .set_patches( list_of("\""+foil_+".*\"") )
     .set_rhoInf(p.fluid.rho)
     .set_CofR(vec3(0,0,0))
     ));  
+
+  installConvergenceAnalysis(ConvergenceAnalysisDisplayerPtr(new ConvergenceAnalysisDisplayer(force_fo_name+"_fpx", p.run.residual)));
+  installConvergenceAnalysis(ConvergenceAnalysisDisplayerPtr(new ConvergenceAnalysisDisplayer(force_fo_name+"_fvx", p.run.residual)));
+  installConvergenceAnalysis(ConvergenceAnalysisDisplayerPtr(new ConvergenceAnalysisDisplayer(force_fo_name+"_fpy", p.run.residual)));
+  installConvergenceAnalysis(ConvergenceAnalysisDisplayerPtr(new ConvergenceAnalysisDisplayer(force_fo_name+"_fvy", p.run.residual)));
+  installConvergenceAnalysis(ConvergenceAnalysisDisplayerPtr(new ConvergenceAnalysisDisplayer(force_fo_name+"_mpz", p.run.residual)));
+  installConvergenceAnalysis(ConvergenceAnalysisDisplayerPtr(new ConvergenceAnalysisDisplayer(force_fo_name+"_mvz", p.run.residual)));
 
 //   cm.insert(new minMaxSurfacePressure(cm, minMaxSurfacePressure::Parameters()
 //       .set_name("minPressure")
@@ -269,7 +284,16 @@ void AirfoilSection::createCase(insight::OpenFOAMCase& cm)
   cm.insert(new VelocityInletBC(cm, in_, boundaryDict, VelocityInletBC::Parameters()
     .set_velocity( FieldData::uniformSteady(p.operation.vinf, 0, 0) ) 
     ));
-  cm.insert(new PressureOutletBC(cm, out_, boundaryDict, PressureOutletBC::Parameters().set_pressure(0.0) ));
+  cm.insert(new PressureOutletBC(cm, out_, boundaryDict, PressureOutletBC::Parameters()
+//                                 .set_pressure(0.0)
+                                 .set_behaviour(PressureOutletBC::Parameters::behaviour_uniform_type(
+                                                FieldData::Parameters().set_fielddata(
+                                                   FieldData::Parameters::fielddata_uniformSteady_type(vec1(
+                                                                                                         0.0
+                                                                                                         ))
+                                                  )
+                                                ))
+                                 ));
    
   cm.insert(new SimpleBC(cm, up_, boundaryDict, "symmetryPlane" ));
   cm.insert(new SimpleBC(cm, down_, boundaryDict, "symmetryPlane" ));
@@ -497,26 +521,6 @@ void AirfoilSectionPolar::evaluateCombinedResults(ResultSetPtr& results)
     "Minimum pressure vs. lift coefficient"
   );
 
-//   std::vector<PlotCurve> curves;
-//   int i=0;
-//   BOOST_FOREACH( const AnalysisInstance& ai, queue_.processed() )
-//   {
-//     const std::string& n = get<0>(ai);
-//     const PropellerAnalysis& a = dynamic_cast<PropellerAnalysis&>(*get<1>(ai));
-//     const ResultSetPtr& r = get<2>(ai);
-//     
-//     curves.push_back(PlotCurve(a.sigmaVsX(a.p()), str( format(" w l lt 1 lc %d t '%s'") % i % n ) ));
-//     
-//     i++;
-//   }
-//   
-//   addPlot
-//   (
-//     results, executionPath(), "chartSigmaVsX",
-//     "x", "sigma",
-//     curves,
-//     "Cavitation number vs. radius"
-//   );
 }
 
 

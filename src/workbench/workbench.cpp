@@ -20,10 +20,10 @@
 
 #include "workbench.h"
 
-#include <QtGui/QLabel>
-#include <QtGui/QMenu>
-#include <QtGui/QMenuBar>
-#include <QtGui/QAction>
+#include <QLabel>
+#include <QMenu>
+#include <QMenuBar>
+#include <QAction>
 #include <QMessageBox>
 #include <QFileDialog>
 
@@ -37,7 +37,8 @@
 WorkbenchApplication::WorkbenchApplication(int &argc, char **argv)
 : QApplication(argc, argv)
 {
-  connect(this, SIGNAL(exceptionOcurred(QString, QString)), this, SLOT(displayExceptionNotification(QString, QString)));
+  connect(this, &WorkbenchApplication::exceptionOcurred,
+          this, &WorkbenchApplication::displayExceptionNotification);
 }
 
 WorkbenchApplication::~WorkbenchApplication()
@@ -107,18 +108,22 @@ workbench::workbench()
     
     mdiArea_ = new QMdiArea(this);
     setCentralWidget( mdiArea_ );
+    connect(mdiArea_, &QMdiArea::subWindowActivated,
+            this, &workbench::onSubWindowActivated);
     
     QMenu *analysisMenu = menuBar()->addMenu( "&Analysis" );
 
     QAction* a = new QAction("New...", this); 
     a->setShortcut(Qt::ControlModifier + Qt::Key_N);
-    connect(a, SIGNAL(triggered()), SLOT(newAnalysis()) );
+    connect(a, &QAction::triggered, this, &workbench::newAnalysis );
     analysisMenu->addAction( a );
     
     a = new QAction("Open...", this); 
     a->setShortcut(Qt::ControlModifier + Qt::Key_O);
-    connect(a, SIGNAL(triggered()), SLOT(onOpenAnalysis()) );
+    connect(a, &QAction::triggered, this, &workbench::onOpenAnalysis );
     analysisMenu->addAction( a );
+
+    readSettings();
 }
 
 workbench::~workbench()
@@ -167,11 +172,50 @@ void workbench::openAnalysis(const QString& fn)
   }
   
   AnalysisForm *form= new AnalysisForm(mdiArea_, analysisName);
-  form->parameters().readFromNode(doc, *rootnode, fp.parent_path());
+  //form->parameters().readFromNode(doc, *rootnode, fp.parent_path());
+  form->loadParameters(fp);
   boost::filesystem::path dir=boost::filesystem::path(fn.toStdString()).parent_path();
   form->executionPathParameter()()=dir;
   form->forceUpdate();
   form->showMaximized();
+}
+
+
+void workbench::closeEvent(QCloseEvent *event)
+{
+    QSettings settings("silentdynamics", "workbench");
+    settings.setValue("geometry", saveGeometry());
+    settings.setValue("windowState", saveState());
+    QMainWindow::closeEvent(event);
+}
+
+void workbench::readSettings()
+{
+    QSettings settings("silentdynamics", "workbench");
+    restoreGeometry(settings.value("geometry").toByteArray());
+    restoreState(settings.value("windowState").toByteArray());
+}
+
+
+void workbench::onSubWindowActivated( QMdiSubWindow * window )
+{
+    if (lastActive_)
+    {
+//        qDebug()<<"remove menu";
+        lastActive_->removeMenu();
+    }
+
+    if (WidgetWithDynamicMenuEntries* newactive = dynamic_cast<WidgetWithDynamicMenuEntries*>(window))
+    {
+//        qDebug()<<"insert menu";
+        newactive->insertMenu(menuBar());
+        lastActive_=newactive;
+    }
+    else
+    {
+//        qDebug()<<"removed last menu";
+        lastActive_=NULL;
+    }
 }
 
 //#include "workbench.moc"

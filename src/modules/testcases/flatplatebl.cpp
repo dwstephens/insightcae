@@ -318,7 +318,7 @@ void FlatPlateBL::createInflowBC(insight::OpenFOAMCase& cm, const OFDictData::di
       
     inflow_velocity.velocity.fielddata=umean_data;
     
-    cm.insert(new VelocityInletBC(cm, in_, boundaryDict, inflow_velocity));
+    cm.insert(new VelocityInletBC(cm, in_, boundaryDict, inflow_velocity, executionPath()));
   }
 }
 
@@ -337,7 +337,6 @@ void FlatPlateBL::createCase(insight::OpenFOAMCase& cm)
     cm.insert(new simpleFoamNumerics(cm, simpleFoamNumerics::Parameters()
       .set_checkResiduals(false) // don't stop earlier since averaging should be completed
       .set_Uinternal(vec3(uinf_,0,0))
-      .set_hasCyclics(true)
       .set_decompositionMethod(FVNumerics::Parameters::decompositionMethod_type::hierarchical)
       .set_endTime(end_)
       .set_np(p.OpenFOAMAnalysis::Parameters::run.np)
@@ -348,15 +347,27 @@ void FlatPlateBL::createCase(insight::OpenFOAMCase& cm)
 	= boost::get<Parameters::run_type::regime_unsteady_type>(&p.run.regime))
   {
     cm.insert( new pimpleFoamNumerics(cm, pimpleFoamNumerics::Parameters()
-      .set_hasCyclics(true)
       .set_LESfilteredConvection(p.run.filteredconvection)
       .set_Uinternal(vec3(p.operation.uinf,0,0))
-      .set_maxDeltaT(0.25*T_)
+//      .set_maxDeltaT(0.25*T_)
+
+      .set_time_integration(
+         pimpleFoamNumerics::Parameters::time_integration_type()
+          .set_momentumPredictor(true)
+          .set_timestep_control(PIMPLESettings::Parameters::timestep_control_adjust_type(
+                                  0.9, // maxCo
+                                  0.25*T_ // maxDeltaT
+                                ) )
+          .set_pressure_velocity_coupling(
+               PIMPLESettings::Parameters::pressure_velocity_coupling_PISO_type()
+          )
+       )
+      .set_deltaT( 0.25 * L_/double(nax_) / uinf_ )
+      .set_endTime(end_)
+
       .set_writeControl(FVNumerics::Parameters::writeControl_type::adjustableRunTime)
       .set_writeInterval(0.25*T_)
-      .set_endTime(end_)
       .set_decompositionMethod(FVNumerics::Parameters::decompositionMethod_type::hierarchical)
-      .set_deltaT( 0.25 * L_/double(nax_) / uinf_ )
       .set_np(p.OpenFOAMAnalysis::Parameters::run.np)
       .set_decompWeights(vec3(2,1,0))
     ));
@@ -425,8 +436,10 @@ void FlatPlateBL::createCase(insight::OpenFOAMCase& cm)
 //   ));
   
   cm.insert(new PressureOutletBC(cm, out_top_, boundaryDict, PressureOutletBC::Parameters()
-    .set_pressure(0.0)
-    .set_behaviour(PressureOutletBC::Parameters::behaviour_uniform_type())
+    .set_behaviour( PressureOutletBC::Parameters::behaviour_uniform_type(
+       FieldData::Parameters()
+        .set_fielddata(FieldData::Parameters::fielddata_uniformSteady_type(vec1(0.0)))
+      ))
     .set_prohibitInflow(false)
   ));
   
@@ -443,7 +456,7 @@ void FlatPlateBL::createCase(insight::OpenFOAMCase& cm)
 void FlatPlateBL::evaluateAtSection
 (
   OpenFOAMCase& cm,
-  ResultSetPtr results, double x, int i,
+  ResultSetPtr results, double x, int /*i*/,
   const Interpolator& cfi,
   const std::string& UMeanName,
   const std::string& RFieldName,
@@ -460,8 +473,8 @@ void FlatPlateBL::evaluateAtSection
   string title=prefix+"__xByL_" + str(format("%04.1f") % xByL);
   replace_all(title, ".", "_");
   
-  TabularResult *table=NULL, *table2=NULL;
-  TabularResult::Row *thisctrow=NULL, *thisctrow2=NULL;
+  TabularResult *table=nullptr, *table2=nullptr;
+  TabularResult::Row *thisctrow=nullptr, *thisctrow2=nullptr;
   if (!extract_section)
   {
     table = &(results->get<TabularResult>("tableCoefficients"));
@@ -509,7 +522,7 @@ void FlatPlateBL::evaluateAtSection
   double ypByy=utau/p.fluid.nu;
   arma::mat yplus=y*ypByy;
     
-  int cU=cd[UMeanName].col;
+  arma::uword cU=cd[UMeanName].col;
   arma::mat upaxial(join_rows(yplus, data.col(cU)/utau));
   arma::mat upwallnormal(join_rows(yplus, data.col(cU+1)/utau));
   arma::mat upspanwise(join_rows(yplus, data.col(cU+2)/utau));
@@ -596,7 +609,7 @@ void FlatPlateBL::evaluateAtSection
 
   // Reynolds stress profiles
   std::cout<<"index of "<<RFieldName<<": "<<cd[RFieldName].col<<"."<<std::endl;
-  int cR=cd[RFieldName].col;
+  arma::uword cR=cd[RFieldName].col;
   arma::mat Rpuu(join_rows(yplus, data.col(cR)/pow(utau,2)));
   arma::mat Rpvv(join_rows(yplus, data.col(cR+3)/pow(utau,2)));
   arma::mat Rpww(join_rows(yplus, data.col(cR+5)/pow(utau,2)));
@@ -634,7 +647,7 @@ void FlatPlateBL::evaluateAtSection
   
   if (cd.find("k")!=cd.end())
   {    
-    int ck=cd["k"].col;
+    arma::uword ck=cd["k"].col;
     
     arma::mat kp_vs_yp=join_rows(yplus, (data.col(ck)/pow(utau,2)) + 0.5*(Rpuu.col(1)+Rpvv.col(1)+Rpww.col(1)));
     
@@ -771,11 +784,7 @@ insight::ResultSetPtr FlatPlateBL::evaluateResults(insight::OpenFOAMCase& cm)
     );
   }
   
-  BOOST_FOREACH
-  (
-    const FlatPlateBL::Parameters::eval_type::bc_extractsections_type::value_type& es, 
-    p.eval.bc_extractsections
-  )
+  for (const auto& es: p.eval.bc_extractsections)
   {
     evaluateAtSection
     (
@@ -997,7 +1006,7 @@ arma::mat FlatPlateBL::integrateDelta123(const arma::mat& uByUinf_vs_y)
   
   arma::mat x = uByUinf_vs_y.col(0);
   arma::mat y = uByUinf_vs_y.col(1);
-  for (int i=0; i<y.n_elem; i++) y(i)=std::max(0., std::min(1., y(i)));
+  for (arma::uword i=0; i<y.n_elem; i++) y(i)=std::max(0., std::min(1., y(i)));
   //arma::mat y = clamp(uByUinf_vs_y.col(1), 0., 1);
 
   arma::mat y1, y2, y3;
@@ -1012,7 +1021,7 @@ arma::mat FlatPlateBL::integrateDelta123(const arma::mat& uByUinf_vs_y)
     delta(2) += 0.5*y3(0) * x(0);
   }
   
-  for (int i=0; i<uByUinf_vs_y.n_rows-1; i++)
+  for (arma::uword i=0; i<uByUinf_vs_y.n_rows-1; i++)
   {
     delta(0) += 0.5*( y1(i) + y1(i+1) ) * ( x(i+1) - x(i) );
     delta(1) += 0.5*( y2(i) + y2(i+1) ) * ( x(i+1) - x(i) );
@@ -1024,12 +1033,12 @@ arma::mat FlatPlateBL::integrateDelta123(const arma::mat& uByUinf_vs_y)
 
 double FlatPlateBL::searchDelta99(const arma::mat& uByUinf_vs_y)
 {
-  int i=0;
+  arma::uword i=0;
   for (i=0; i<uByUinf_vs_y.n_rows; i++)
   {
     if (uByUinf_vs_y(i,1)>=0.99) break;
   }
-  return uByUinf_vs_y(std::min(i, int(uByUinf_vs_y.n_rows-1)),0);
+  return uByUinf_vs_y(std::min(i, arma::uword(uByUinf_vs_y.n_rows-1)),0);
 }
 
 

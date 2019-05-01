@@ -24,6 +24,7 @@
 #include "base/linearalgebra.h"
 #include "base/boost_include.h"
 #include "openfoam/snappyhexmesh.h"
+#include "boost/regex.hpp"
 
 #include <map>
 #include <cmath>
@@ -31,6 +32,10 @@
 
 #include "vtkSTLReader.h"
 #include "vtkSmartPointer.h"
+#include "vtkPolyData.h"
+#include "vtkPolyDataReader.h"
+#include "vtkCellData.h"
+#include "vtkPolyData.h"
 
 using namespace std;
 using namespace arma;
@@ -127,7 +132,7 @@ void setSet(const OpenFOAMCase& ofc, const boost::filesystem::path& location, co
   if ((ofc.OFversion()>=220) && (listTimeDirectories(location).size()==0)) opts.push_back("-constant");
   std::string machine=""; // problems, if job is put into queue system
   ofc.forkCommand(proc, location, "setSet", opts, &machine);
-  BOOST_FOREACH(const std::string& line, cmds)
+  for (const std::string& line: cmds)
   {
     proc << line << endl;
   }
@@ -160,7 +165,7 @@ void copyPolyMesh(const boost::filesystem::path& from, const boost::filesystem::
   }
   if (purify)
   {
-    BOOST_FOREACH(const std::string& fname, files)
+    for (const std::string& fname: files)
     {
       path gzname(fname.c_str()); gzname=(gzname.string()+".gz");
       if (exists(source/gzname)) 
@@ -235,7 +240,7 @@ void linkPolyMesh(const boost::filesystem::path& from, const boost::filesystem::
       throw insight::Exception("Essential mesh file "+fname+" not present in "+source.c_str());
   }
 
-  BOOST_FOREACH(const std::string& fname, 
+  for (const std::string& fname:
 		list_of<std::string>/*("boundary")*/("faces")("neighbour")("owner")("points")
 		.convert_to_container<std::vector<std::string> >())
   {
@@ -290,7 +295,7 @@ void fieldToCellOperator::addIntoDictionary(OFDictData::dict& setFieldDict) cons
   opdict["max"]=p_.max();
 
   OFDictData::list fve;
-  BOOST_FOREACH(const FieldValueSpec& fvs, p_.fieldValues())
+  for (const FieldValueSpec& fvs: p_.fieldValues())
   {
     //std::ostringstream line;
     //line << fvs.get<0>() << " " << fvs.get<1>() ;
@@ -319,7 +324,7 @@ void boxToCellOperator::addIntoDictionary(OFDictData::dict& setFieldDict) const
   opdict["box"]=OFDictData::to_OF(p_.min()) + OFDictData::to_OF(p_.max());
 
   OFDictData::list fve;
-  BOOST_FOREACH(const FieldValueSpec& fvs, p_.fieldValues())
+  for (const FieldValueSpec& fvs: p_.fieldValues())
   {
     //std::ostringstream line;
     //line << fvs.get<0>() << " " << fvs.get<1>() ;
@@ -348,7 +353,7 @@ void cellToCellOperator::addIntoDictionary(OFDictData::dict& setFieldDict) const
   opdict["set"]=p_.cellSet();
 
   OFDictData::list fve;
-  BOOST_FOREACH(const FieldValueSpec& fvs, p_.fieldValues())
+  for (const FieldValueSpec& fvs: p_.fieldValues())
   {
     //std::ostringstream line;
     //line << fvs.get<0>() << " " << fvs.get<1>() ;
@@ -375,13 +380,13 @@ void setFields(const OpenFOAMCase& ofc, const boost::filesystem::path& location,
   OFDictData::dictFile setFieldsDict;
   
   OFDictData::list& dvl = setFieldsDict.addListIfNonexistent("defaultFieldValues");
-  BOOST_FOREACH( const FieldValueSpec& dv, defaultValues)
+  for ( const FieldValueSpec& dv: defaultValues)
   {
     dvl.push_back( dv );
   }
   
   setFieldsDict.addListIfNonexistent("regions");  
-  BOOST_FOREACH( const setFieldOperator& op, ops)
+  for ( const setFieldOperator& op: ops)
   {
     op.addIntoDictionary(setFieldsDict);
   }
@@ -461,7 +466,7 @@ void createCyclicOperator::addIntoDictionary(const OpenFOAMCase& ofc, OFDictData
   else
     suffixes.push_back("");
   
-  BOOST_FOREACH(const std::string& suf, suffixes)
+  for (const std::string& suf: suffixes)
   {
     OFDictData::dict opdict;
     opdict["name"]=p_.name()+suf;
@@ -475,7 +480,7 @@ void createCyclicOperator::addIntoDictionary(const OpenFOAMCase& ofc, OFDictData
     }
     if (suf=="_half1" || suf=="")
     {
-      int osize=pl.size();
+      size_t osize=pl.size();
       pl.resize(osize+p_.patches_half1().size());
       std::copy(p_.patches_half1().begin(), p_.patches_half1().end(), pl.begin()+osize);
       if (suf!="") opdict["set"]=p_.set_half1();
@@ -526,7 +531,7 @@ void createPatch(const OpenFOAMCase& ofc,
   else
     createPatchDict.addListIfNonexistent("patches");  
   
-  BOOST_FOREACH( const createPatchOperator& op, ops)
+  for ( const createPatchOperator& op: ops)
   {
     op.addIntoDictionary(ofc, createPatchDict);
   }
@@ -614,7 +619,7 @@ arma::mat line::readSamples
   boost::filesystem::path timedir=tdl.rbegin()->second;
   if (!time.empty())
   {
-    BOOST_FOREACH(TimeDirectoryList::value_type& tde, tdl)
+    for (TimeDirectoryList::value_type& tde: tdl)
     {
       if (tde.second.filename().string()==time)
       {
@@ -782,7 +787,7 @@ void circumferentialAveragedUniformLine::addIntoDictionary(const OpenFOAMCase& o
 {
   OFDictData::list& l=sampleDict.addListIfNonexistent("sets");
   
-  BOOST_FOREACH(const line& l, lines_)
+  for (const line& l: lines_)
   {
     l.addIntoDictionary(ofc, sampleDict);
   }
@@ -809,7 +814,7 @@ arma::mat circumferentialAveragedUniformLine::readSamples
   ColumnDescription cd;
   int i=0, num_valid=0;
   bool cd_set=false;
-  BOOST_FOREACH(const line& l, lines_)
+  for (const line& l: lines_)
   {
     arma::mat datai = l.readSamples(ofc, location, &cd, time);
     arma::mat Ri=rotMatrix(i++, p_.angularOffset).t();
@@ -820,7 +825,7 @@ arma::mat circumferentialAveragedUniformLine::readSamples
       {
 	std::ofstream f( (p_.name+"_circularinstance_colheader.txt").c_str() );
 	f<<"#";
-	BOOST_FOREACH(const ColumnDescription::value_type& fn, cd)
+	for (const ColumnDescription::value_type& fn: cd)
 	{
 	  ColumnInfo ci=fn.second;
 	  if (ci.ncmpt==0)
@@ -843,7 +848,7 @@ arma::mat circumferentialAveragedUniformLine::readSamples
 
       num_valid++;
       
-      BOOST_FOREACH(const ColumnDescription::value_type& fn, cd)
+      for (const ColumnDescription::value_type& fn: cd)
       {
 	ColumnInfo ci=fn.second;
   //       cout<<fn.first<<": c="<<ci.col<<" ncmpt="<<ci.ncmpt<<endl;
@@ -945,7 +950,7 @@ void linearAveragedPolyLine::addIntoDictionary(const OpenFOAMCase& ofc, OFDictDa
 {
 //   OFDictData::list& l=sampleDict.addListIfNonexistent("sets");
   
-  BOOST_FOREACH(const line& l, lines_)
+  for (const line& l: lines_)
   {
     l.addIntoDictionary(ofc, sampleDict);
   }
@@ -969,7 +974,7 @@ arma::mat linearAveragedPolyLine::readSamples
   
   ColumnDescription cd;
   int valid_lines=0;
-  BOOST_FOREACH(const line& l, lines_)
+  for (const line& l: lines_)
   {
     arma::mat ds=l.readSamples(ofc, location, &cd, time);
     if (ds.n_rows>0)
@@ -1081,7 +1086,7 @@ void sample(const OpenFOAMCase& ofc,
   sampleDict["sets"] = OFDictData::list();
   sampleDict["surfaces"] = OFDictData::list();
     
-  BOOST_FOREACH( const set& s, sets)
+  for ( const set& s: sets)
   {
     s.addIntoDictionary(ofc, sampleDict);
   }
@@ -1170,6 +1175,12 @@ void mapFields
 {
   std::string execname="mapFields";
 
+  if (!boost::filesystem::exists(source/"system"/"controlDict"))
+      throw insight::Exception("Source case for field mapping does not exist or does not contain a controlDict: "+source.string());
+
+  if (!boost::filesystem::exists(target/"system"/"controlDict"))
+      throw insight::Exception("Target case for field mapping does not exist or does not contain a controlDict: "+target.string());
+
   path mfdPath=target / "system" / "mapFieldsDict";
   if (!exists(mfdPath))
   {
@@ -1207,7 +1218,7 @@ void mapFields
   {
     std::ostringstream os;
     os<<"(";
-    BOOST_FOREACH(const std::string& fn, fields)
+    for (const std::string& fn: fields)
     {
       os<<" "<<fn;
     }
@@ -1284,7 +1295,7 @@ void resetMeshToLatestTimestep(const OpenFOAMCase& c, const boost::filesystem::p
             if (!ignoremissing) remove_all(location/"constant"/"polyMesh");
             copyPolyMesh(lastTime, location/"constant", true, ignoremissing, include_zones);
             
-            BOOST_FOREACH(const TimeDirectoryList::value_type& td, times)
+            for (const TimeDirectoryList::value_type& td: times)
             {
             remove_all(td.second);
             }
@@ -1310,7 +1321,7 @@ void resetMeshToLatestTimestep(const OpenFOAMCase& c, const boost::filesystem::p
                         if (!ignoremissing) remove_all(curploc/"constant"/"polyMesh");
                         copyPolyMesh(lastTime, curploc/"constant", true, ignoremissing, include_zones);
                         
-                        BOOST_FOREACH(const TimeDirectoryList::value_type& td, times)
+                        for (const TimeDirectoryList::value_type& td: times)
                         {
                             remove_all(td.second);
                         }
@@ -1473,7 +1484,7 @@ void runPvPython
   {
     std::ofstream tf(tempfile.c_str());
     tf << "from Insight.Paraview import *" << endl;
-    BOOST_FOREACH(const std::string& cmd, pvpython_commands)
+    for (const std::string& cmd: pvpython_commands)
     {
       tf << cmd;
     }
@@ -1485,203 +1496,6 @@ void runPvPython
   if (!keepScript) remove(tempfile);
 
 }
-
-namespace paraview
-{
-
-defineType(PVScene);
-// defineFactoryTableNoArgs(PVScene);
-defineDynamicClass(PVScene);
-
-PVScene::~PVScene()
-{}
-
-std::string PVScene::pvec(const arma::mat& v)
-{
-  return boost::str( boost::format("[%g, %g, %g]") % v(0) % v(1) % v(2) );
-}
-
-std::vector<boost::filesystem::path> PVScene::createdFiles() const
-{
-  return std::vector<boost::filesystem::path>();
-}
-
-defineType(CustomPVScene);
-addToFactoryTable(PVScene, CustomPVScene);
-addToStaticFunctionTable(PVScene, CustomPVScene, defaultParameters);
-
-CustomPVScene::CustomPVScene(const ParameterSet& ps)
-: p_(ps)
-{}
-
-
-string CustomPVScene::pythonCommands() const
-{
-  return p_.command;
-}
-
-defineType(Cutplane);
-addToFactoryTable(PVScene, Cutplane);
-addToStaticFunctionTable(PVScene, Cutplane, defaultParameters);
-
-Cutplane::Cutplane(const ParameterSet& ps)
-: p_(ps)
-{}
-
-
-string Cutplane::pythonCommands() const
-{
-  return "";
-}
-
-defineType(IsoView);
-addToFactoryTable(PVScene, IsoView);
-addToStaticFunctionTable(PVScene, IsoView, defaultParameters);
-
-IsoView::IsoView(const ParameterSet& ps)
-: p_(ps)
-{}
-
-
-string IsoView::pythonCommands() const
-{
-  arma::mat bbL = p_.bbmax - p_.bbmin;
-  arma::mat ctr = p_.bbmin + 0.5*bbL;
-  arma::mat ex, ey, ez;
-  ex=ey=ez=vec3(0,0,0);
-
-  arma::uvec indices = arma::sort_index(bbL, "descend");
-  ex(indices(0))=1.0;
-  ez(indices(2))=1.0;
-  ey=arma::cross(ez, ex);
-  arma::mat L = bbL(indices);
-
-  return
-      "setCam("
-        + pvec(ctr+ex*L[0]*1.5) + ", "
-        + pvec(ctr) + ", "
-        + pvec(ez) + ", "
-        + str(format("%g") % (0.5*std::max(L[1],L[2]))) + (L[1]>L[2]?", scaleIsHorizontal=True":"")
-      +")\n"
-      "WriteImage('"+p_.filename.filename().stem().string()+"_front"+p_.filename.extension().string()+"')\n"
-      +
-      "setCam("
-        + pvec(ctr+ez*L[2]*1.5) + ", "
-        + pvec(ctr) + ", "
-        + pvec(-ey) + ", "
-      + str(format("%g") % (0.5*std::max(L[1],L[0]))) + (L[0]>L[2]?", scaleIsHorizontal=True":"")
-      +")\n"
-      "WriteImage('"+p_.filename.filename().stem().string()+"_top"+p_.filename.extension().string()+"')\n"
-      +
-      "setCam("
-        + pvec(ctr+ey*L[1]*1.5) + ", "
-        + pvec(ctr) + ", "
-        + pvec(ez) + ", "
-      + str(format("%g") % (0.5*std::max(L[0],L[2]))) + (L[0]>L[2]?", scaleIsHorizontal=True":"")
-      +")\n"
-      "WriteImage('"+p_.filename.filename().stem().string()+"_side"+p_.filename.extension().string()+"')\n"
-      +
-      "setCam("
-        + pvec(ctr+ex*L[0]*1.5+ey*L[1]*1.5+ez*L[2]*1.5) + ", "
-        + pvec(ctr) + ", "
-        + pvec(ez) + ", "
-      + str(format("%g") % (0.5*L[0])) + ", scaleIsHorizontal=True"
-      +")\n"
-      "WriteImage('"+p_.filename.filename().stem().string()+"_diag"+p_.filename.extension().string()+"')\n"
-  ;
-}
-
-std::vector<boost::filesystem::path> IsoView::createdFiles() const
-{
-  return list_of<boost::filesystem::path>
-      ( p_.filename.filename().stem().string()+"_front"+p_.filename.extension().string() )
-      ( p_.filename.filename().stem().string()+"_top"+p_.filename.extension().string() )
-      ( p_.filename.filename().stem().string()+"_side"+p_.filename.extension().string() )
-      ( p_.filename.filename().stem().string()+"_diag"+p_.filename.extension().string() )
-      ;
-}
-
-
-
-
-addToAnalysisFactoryTable(ParaviewVisualization);
-
-ParaviewVisualization::ParaviewVisualization(const ParameterSet& ps, const boost::filesystem::path& exepath)
-: Analysis("", "", ps, exepath)
-{
-}
-
-ParameterSet ParaviewVisualization::defaultParameters()
-{
-  return Parameters::makeDefault();
-}
-
-ResultSetPtr ParaviewVisualization::operator()(ProgressDisplayer*)
-{
-//  boost::mutex::scoped_lock lock(runPvPython_mtx);
-    setupExecutionEnvironment();
-
-    Parameters p(parameters_);
-    
-    std::string pvscript=
-     "openfoam_case=loadOFCase('.')\n"
-     "prepareSnapshots()\n"
-    ;
-    
-    BOOST_FOREACH(PVScenePtr scn, p.scenes)
-    {
-        pvscript += scn->pythonCommands();
-    }
-
-
-    redi::opstream proc;
-    std::vector<string> args;
-    args.push_back("--use-offscreen-rendering");
-    std::string machine=""; // execute always on local machine
-    //ofc.forkCommand(proc, location, "pvpython", args);
-
-    path tempfile=absolute(unique_path("%%%%%%%%%.py"));
-    {
-      std::ofstream tf(tempfile.c_str());
-      tf << "from Insight.Paraview import *\n";
-      tf << pvscript;
-      tf.close();
-    }
-    args.push_back(tempfile.c_str());
-    if (OFEs::list.size()==0)
-      throw insight::Exception("no OpenFOAM environment defined!");
-
-    OpenFOAMCase ofc( *OFEs::list.begin()->second );
-    ofc.executeCommand(executionPath(), "pvbatch", args, NULL, 0, &machine);
-
-//    if (!keepScript)
-      remove(tempfile);
-
-    ResultSetPtr results(new ResultSet(parameters_, "Paraview renderings", ""));
-
-    std::vector<boost::filesystem::path> files;
-    BOOST_FOREACH(PVScenePtr scn, p.scenes)
-    {
-        std::vector<boost::filesystem::path> af=scn->createdFiles();
-        std::copy(af.begin(), af.end(), std::back_inserter(files));
-    }
-
-    BOOST_FOREACH(boost::filesystem::path f, files)
-    {
-      results->insert(f.filename().stem().string(),
-        std::auto_ptr<Image>(new Image
-        (
-        executionPath(), f,
-        f.filename().stem().string(), ""
-      )));
-    }
-
-    return results;
-}
-
-  
-}
-
 
 
 
@@ -1724,7 +1538,7 @@ patchIntegrate::patchIntegrate
   cm.parseBoundaryDict ( location, boundaryDict );
 
   std::vector<std::string> patches;
-  BOOST_FOREACH ( const OFDictData::dict::value_type& de, boundaryDict )
+  for ( const OFDictData::dict::value_type& de: boundaryDict )
   {
     if ( regex_match ( de.first, pat ) )
       {
@@ -1735,7 +1549,7 @@ patchIntegrate::patchIntegrate
 
   int ncomp=1;
   arma::mat result;
-  BOOST_FOREACH ( const std::string& patchName, patches )
+  for ( const std::string& patchName: patches )
   {
     std::vector<std::string> opts;
     copy ( addopts.begin(), addopts.end(), back_inserter ( opts ) );
@@ -1762,7 +1576,7 @@ patchIntegrate::patchIntegrate
         re_mag_int ( "^ *Integral of (.+) over area magnitude of patch (.+)\\[(.+)\\] = (.+)$" ),
         re_mag_int4 ( "^ *areaIntegrate\\((.+)\\) of (.+) = (.+)$" ),
         re_area ( "^ *Area magnitude of patch (.+)\\[(.+)\\] = (.+)$" ),
-        re_area4 ( "^ *total area   = (.+)$" )
+        re_area4 ( "^ *total area *= (.+)$" )
         ;
 
     
@@ -1770,7 +1584,7 @@ patchIntegrate::patchIntegrate
     double time=0;
     std::vector<double> times, areadata;
     std::vector<arma::mat> data;
-    BOOST_FOREACH ( const std::string& line, output )
+    for ( const std::string& line: output )
     {
       if ( boost::regex_match ( line, what, re_time ) )
         {
@@ -1868,7 +1682,7 @@ patchArea::patchArea(const OpenFOAMCase& cm, const boost::filesystem::path& loca
 
 
   boost::match_results<std::string::const_iterator> what;
-  BOOST_FOREACH ( const std::string& line, output )
+  for ( const std::string& line: output )
   {
     if ( boost::regex_match ( line, what, re_total ) )
       {
@@ -1933,7 +1747,7 @@ typedef std::map<std::string, int> ColumnDescription;
 bool equal_columns(const ColumnDescription& c1, const ColumnDescription& c2)
 {
   bool ok = (c1.size()==c2.size());
-  BOOST_FOREACH(const ColumnDescription::value_type& c1e, c1)
+  for (const ColumnDescription::value_type& c1e: c1)
   {
 //     cout<<"col="<<c1e.first<<" ("<<c1e.second<<") >>> ";
     ColumnDescription::const_iterator i2=c2.find(c1e.first);
@@ -1977,7 +1791,7 @@ std::vector<arma::mat> readParaviewCSVs(const boost::filesystem::path& filetempl
 	  if (alldata.size()==0)
 	  {
 	    // insert all cols
-	    BOOST_FOREACH(const ColumnDescription::value_type& cd, thisheaders)
+	    for (const ColumnDescription::value_type& cd: thisheaders)
 	    {
 	      alldata[cd.first].push_back(r.col(cd.second));
 	    }
@@ -1985,8 +1799,8 @@ std::vector<arma::mat> readParaviewCSVs(const boost::filesystem::path& filetempl
 	  else
 	  {
 	    std::set<std::string> vc;
-	    BOOST_FOREACH(const AllData::value_type& adt, alldata) vc.insert(adt.first);
-	    BOOST_FOREACH(const ColumnDescription::value_type& cdt, thisheaders)
+	    for (const AllData::value_type& adt: alldata) vc.insert(adt.first);
+	    for (const ColumnDescription::value_type& cdt: thisheaders)
 	    {
 	      AllData::iterator j=alldata.find(cdt.first); // try to find each column of this CSV in alldata
 	      if (j!=alldata.end()) // if present, append
@@ -1997,7 +1811,7 @@ std::vector<arma::mat> readParaviewCSVs(const boost::filesystem::path& filetempl
 	      }
 	    }
 	    // remove all cols, that are not present
-	    BOOST_FOREACH(const std::string& vci, vc)
+	    for (const std::string& vci: vc)
 	    {
 // 	      cout<<"Remove "<<vci<<endl;
 	      alldata.erase(alldata.find(vci));
@@ -2031,17 +1845,17 @@ std::vector<arma::mat> readParaviewCSVs(const boost::filesystem::path& filetempl
   if (headers)
   {
     int j=0;
-    BOOST_FOREACH(const AllData::value_type& cv, alldata)
+    for (const AllData::value_type& cv: alldata)
     {
       (*headers)[cv.first]=j++;
     }
   }
   
-  BOOST_FOREACH(const AllData::value_type& cv, alldata)
+  for (const AllData::value_type& cv: alldata)
   {
     const std::vector< arma::mat>& profs=cv.second;
     int k=0;
-    BOOST_FOREACH(const arma::mat& col, profs)
+    for (const arma::mat& col: profs)
     {
       arma::mat& cumprof=result[k++];
       if (cumprof.n_cols==0) 
@@ -2161,7 +1975,7 @@ void meshQualityReport(const OpenFOAMCase& cm, const boost::filesystem::path& lo
   typedef std::vector<MeshQualityInfo> MQInfoList;
   MQInfoList mqinfos;
   MeshQualityInfo curmq;
-  BOOST_FOREACH(const std::string& line, output)
+  for (const std::string& line: output)
   {
     if (boost::regex_match(line, what, re_time))
     {
@@ -2258,7 +2072,7 @@ void meshQualityReport(const OpenFOAMCase& cm, const boost::filesystem::path& lo
   }
   if (curmq.time!="") mqinfos.push_back(curmq);
   
-  BOOST_FOREACH(const MeshQualityInfo& mq, mqinfos)
+  for (const MeshQualityInfo& mq: mqinfos)
   {
     results->insert
     (
@@ -2314,9 +2128,9 @@ void currentNumericalSettingsReport
 )
 {
   double order=990;
-  BOOST_FOREACH
+  for
   (
-    const boost::filesystem::path& dictname, 
+    const boost::filesystem::path& dictname:
     list_of<boost::filesystem::path> 
       ("system/controlDict")("system/fvSchemes")("system/fvSchemes")
       ("constant/RASProperties")("constant/LESProperties")
@@ -2400,7 +2214,7 @@ arma::mat projectedArea
 {
   std::vector<std::string> opts;
   std::string pl="( ";
-  BOOST_FOREACH(const std::string& pn, patches)
+  for (const std::string& pn: patches)
   {
     pl+=pn+" ";
   }
@@ -2414,7 +2228,7 @@ arma::mat projectedArea
 
   std::vector<double> t, A;
   boost::regex re_area("^Projected area at time (.+) = (.+)$");
-  BOOST_FOREACH(const std::string & line, output)
+  for (const std::string & line: output)
   {
     boost::match_results<std::string::const_iterator> what;
     if (boost::regex_match(line, what, re_area))
@@ -2446,7 +2260,7 @@ arma::mat minPatchPressure
 
   std::vector<double> t, minp;
   boost::regex re("^Minimum pressure at t=(.+) pmin=(.+)$");
-  BOOST_FOREACH(const std::string & line, output)
+  for (const std::string & line: output)
   {
     boost::match_results<std::string::const_iterator> what;
     if (boost::regex_match(line, what, re))
@@ -2499,7 +2313,8 @@ void extrude2DMesh
   std::string sourcePatchName2,
   bool wedgeInsteadOfPrism,
   double distance,
-  const arma::mat& offsetTranslation
+  const arma::mat& offsetTranslation,
+  const arma::mat& fixedDirection
 )
 {  
   
@@ -2525,10 +2340,19 @@ void extrude2DMesh
   }
   else
   {
-    extrDict["extrudeModel"]="linearNormal";
     OFDictData::dict lnc;
     lnc["thickness"]=distance;
-    extrDict["linearNormalCoeffs"]=lnc;
+    if (fixedDirection.n_elem==3)
+      {
+        extrDict["extrudeModel"]="linearDirection";
+        lnc["direction"]=OFDictData::vector3(fixedDirection);
+        extrDict["linearDirectionCoeffs"]=lnc;
+      }
+    else
+      {
+        extrDict["extrudeModel"]="linearNormal";
+        extrDict["linearNormalCoeffs"]=lnc;
+      }
   }
 
 
@@ -2648,29 +2472,6 @@ void createBaffles
   cm.executeCommand(location, "createBaffles", opt);
 }
 
-arma::mat STLBndBox
-(
-  const boost::filesystem::path& path
-)
-{
-  if (!boost::filesystem::exists(path))
-    throw insight::Exception("file "+path.string()+" does not exist!");
-
-  vtkSmartPointer<vtkSTLReader> stl = vtkSmartPointer<vtkSTLReader>::New();
-  stl->SetFileName(path.c_str());
-  stl->Update();
-
-  double bb[6];
-  stl->GetOutput()->GetBounds(bb);
-
-  arma::mat bbm;
-  bbm
-    << bb[0] << bb[1] << arma::endr
-    << bb[2] << bb[3] << arma::endr
-    << bb[4] << bb[5] << arma::endr;
-
-  return bbm;
-}
 
 
 std::pair<arma::mat, arma::mat> zoneExtrema
@@ -2695,7 +2496,7 @@ std::pair<arma::mat, arma::mat> zoneExtrema
   
   arma::mat mi, ma;
   
-  BOOST_FOREACH(const std::string& l, output)
+  for (const std::string& l: output)
   {
     if (boost::regex_match(l, what, re_vec))
     {
@@ -2780,7 +2581,7 @@ void createPrismLayers
       .set_doSnap(false)
       .set_doAddLayers(true)
   ;
-  BOOST_FOREACH(const PatchLayers::value_type& pl, nLayers)
+  for (const PatchLayers::value_type& pl: nLayers)
   {
 //     shm_feats.push_back(new snappyHexMeshFeats::PatchLayers(snappyHexMeshFeats::PatchLayers::Parameters()
       shm_cfg.features.push_back( snappyHexMeshFeats::FeaturePtr( new snappyHexMeshFeats::PatchLayers( snappyHexMeshFeats::PatchLayers::Parameters()
@@ -2854,7 +2655,7 @@ arma::mat surfaceProjectLine
   boost::regex re_res("curve = \\((.*)\\)$");
   boost::match_results<std::string::const_iterator> what;
   
-  BOOST_FOREACH(const std::string& l, output)
+  for (const std::string& l: output)
   {
     if (boost::regex_match(l, what, re_res))
     {
@@ -2862,7 +2663,7 @@ arma::mat surfaceProjectLine
       std::vector<std::string> pairs;
       std::string matched(what[1]);
       boost::split(pairs, matched, boost::is_any_of(","));
-      BOOST_FOREACH(const std::string& p, pairs)
+      for (const std::string& p: pairs)
       {
 	std::istringstream is(p);
 	double x, r;
@@ -2914,7 +2715,7 @@ std::vector<boost::filesystem::path> searchOFCasesBelow(const boost::filesystem:
 {
   std::vector<boost::filesystem::path> cds, cases;
   find_files(basepath, "controlDict", cds);
-  BOOST_FOREACH(const boost::filesystem::path& cd, cds)
+  for (const boost::filesystem::path& cd: cds)
   {
     if ( boost::filesystem::basename(cd.parent_path()) == "system" )
     {
@@ -2987,12 +2788,12 @@ ResultSetPtr HomogeneousAveragedProfile::operator()(ProgressDisplayer* displayer
   results->introduction() = description_;
   Ordering so;
   
-  BOOST_FOREACH(const std::string& fieldname, p.fields)
+  for (const std::string& fieldname: p.fields)
   {
     int c=cd[fieldname].col;
     int ncmpt=cd[fieldname].ncmpt;
     
-    std::vector<PlotCurve> crvs;
+    PlotCurveList crvs;
     for (int i=0; i<ncmpt; i++)
     {
       
@@ -3036,7 +2837,7 @@ std::vector<std::string> patchList
   
   const boost::regex filter( include );
   
-  BOOST_FOREACH(const OFDictData::dict::value_type& patch, boundaryDict)
+  for (const OFDictData::dict::value_type& patch: boundaryDict)
   {
       std::string patchname = patch.first;
       
@@ -3044,7 +2845,7 @@ std::vector<std::string> patchList
       if (boost::regex_match( patchname, what, filter ))
       {
           bool excl=false;
-          BOOST_FOREACH(std::string expat, exclude)
+          for (std::string expat: exclude)
           {
               std::cout<<" ++ include patch "<<patchname<<" because of regex_rule "<<include<<std::endl;
               if (expat[0]=='\"')
@@ -3229,7 +3030,7 @@ bool checkIfReconstructLatestTimestepNeeded
 
 
 
-void exportEMesh(const std::vector<arma::mat>& points, const boost::filesystem::path& filename)
+void exportEMesh(const EMeshPtsList &points, const boost::filesystem::path& filename)
 {
   std::ofstream f(filename.c_str());
   f<<"FoamFile {"<<endl
@@ -3242,7 +3043,7 @@ void exportEMesh(const std::vector<arma::mat>& points, const boost::filesystem::
 
   f<<points.size()<<endl
    <<"("<<endl;
-  BOOST_FOREACH(const arma::mat& p, points)
+  for (const arma::mat& p: points)
   {
     f<<OFDictData::to_OF(p)<<endl;
   }
@@ -3257,5 +3058,423 @@ void exportEMesh(const std::vector<arma::mat>& points, const boost::filesystem::
   f<<")"<<endl;
 }
 
+
+void exportEMesh(const std::vector<EMeshPtsList>& pts, const boost::filesystem::path& filename)
+{
+  std::ofstream f(filename.c_str());
+  f<<"FoamFile {"<<endl
+   <<" version     2.0;"<<endl
+   <<" format      ascii;"<<endl
+   <<" class       featureEdgeMesh;"<<endl
+   <<" location    \"\";"<<endl
+   <<" object      "<<filename.filename().string()<<";"<<endl
+   <<"}"<<endl;
+
+  int npts=0;
+  for (const EMeshPtsList& points: pts)
+  {
+    npts+=points.size();
+  }
+  f<<npts<<endl
+   <<"("<<endl;
+  for (const EMeshPtsList& points: pts)
+  {
+    for (const arma::mat& p: points)
+    {
+      f<<OFDictData::to_OF(p)<<endl;
+    }
+  }
+  f<<")"<<endl;
+
+  f<<(npts-pts.size())<<endl
+   <<"("<<endl;
+  int ofs=0;
+  for (const EMeshPtsList& points: pts)
+  {
+    for (size_t i=1; i<points.size(); i++)
+    {
+      f<<"("<<(ofs+i-1)<<" "<<(ofs+i)<<")"<<endl;
+    }
+    ofs+=points.size();
+  }
+  f<<")"<<endl;
+}
+
+
+OpenFOAMCaseDirs::OpenFOAMCaseDirs
+(
+    const OpenFOAMCase&,
+    const path& location
+)
+  : location_(location)
+{
+  if (!exists(location))
+    throw insight::Exception("OpenFOAM case location does not exist: "+location.string());
+
+  std::vector<path> to_test;
+
+  to_test = { "system", "constant" };
+  for (const auto& tt: to_test)
+  {
+    if (exists(location/tt)) sysDirs_.insert(location/tt);
+  }
+
+  to_test = { "postProcessing", "VTK" };
+  for (const auto& tt: to_test)
+  {
+    if (exists(location/tt)) postDirs_.insert(location/tt);
+  }
+
+  TimeDirectoryList tdl = listTimeDirectories(location);
+  for (const auto& td: tdl)
+  {
+    timeDirs_.push_back(td.second);
+  }
+
+  directory_iterator end_itr; // default construction yields past-the-end
+  const boost::regex filter( "processor[0-9]+" );
+  for ( directory_iterator i( location ); i != end_itr; i++ )
+      {
+          if ( is_directory(i->status()) )
+          {
+              std::string fn=i->path().filename().string();
+              boost::smatch what;
+              if ( boost::regex_match( i->path().filename().string(), what, filter ) )
+                {
+                  procDirs_.insert(i->path());
+                }
+          }
+      }
+}
+
+std::set<boost::filesystem::path> OpenFOAMCaseDirs::timeDirs( OpenFOAMCaseDirs::TimeDirOpt td )
+{
+  std::set<boost::filesystem::path> tds;
+
+  if (td==TimeDirOpt::All)
+  {
+    std::copy( timeDirs_.begin(), timeDirs_.end(), std::inserter(tds, tds.begin()) );
+  }
+
+  if ( td==TimeDirOpt::OnlyFirst || td==TimeDirOpt::OnlyFirstAndLast )
+  {
+    if (timeDirs_.size()>0) tds.insert(timeDirs_.front());
+  }
+
+  if (td==TimeDirOpt::OnlyLast || td==TimeDirOpt::OnlyFirstAndLast )
+  {
+    if (timeDirs_.size()>0)
+    {
+      if (timeDirs_.back().filename().string()!="0")
+        tds.insert(timeDirs_.back());
+    }
+  }
+
+  if (td==TimeDirOpt::ExceptFirst)
+  {
+    if (timeDirs_.size()>1)
+    {
+      std::copy( timeDirs_.begin()+1, timeDirs_.end(), std::inserter(tds, tds.begin()) );
+    }
+  }
+
+
+  return tds;
+}
+
+std::set<boost::filesystem::path> OpenFOAMCaseDirs::caseFilesAndDirs
+(
+    OpenFOAMCaseDirs::TimeDirOpt td,
+    bool cleanProc,
+    bool cleanTimes,
+    bool cleanPost,
+    bool cleanSys
+)
+{
+  std::set<boost::filesystem::path> all_cands;
+
+  if (cleanSys) std::copy( sysDirs_.begin(), sysDirs_.end(), std::inserter(all_cands, all_cands.begin()) );
+
+  if (cleanPost) std::copy( postDirs_.begin(), postDirs_.end(), std::inserter(all_cands, all_cands.begin()) );
+
+  if (cleanTimes)
+  {
+    auto tds = timeDirs(td);
+    std::copy( tds.begin(), tds.end(), std::inserter(all_cands, all_cands.begin()) );
+  }
+
+  if (cleanProc) std::copy( procDirs_.begin(), procDirs_.end(), std::inserter(all_cands, all_cands.begin()) );
+
+  return all_cands;
+}
+
+void OpenFOAMCaseDirs::packCase(const boost::filesystem::path& archive_file,OpenFOAMCaseDirs::TimeDirOpt td)
+{
+  std::string cmd;
+  cmd+="cd "+location_.string()+";";
+  cmd+="tar czf "+archive_file.string();
+  for (const auto& c: sysDirs_) cmd+=" "+make_relative(location_, c).string();
+  for (const auto& c: postDirs_) cmd+=" "+make_relative(location_, c).string();
+
+  auto tds = timeDirs(td);
+  for (const auto& c: tds) cmd+=" "+make_relative(location_, c).string();
+
+  if (::system(cmd.c_str()) != 0)
+    throw insight::Exception("Could not pack OpenFOAM case files.\n"
+                             "Command was \""+cmd+"\"");
+}
+
+void OpenFOAMCaseDirs::cleanCase
+(
+    OpenFOAMCaseDirs::TimeDirOpt td,
+    bool cleanProc,
+    bool cleanTimes,
+    bool cleanPost,
+    bool cleanSys
+)
+{
+
+  auto cands = caseFilesAndDirs(td, cleanProc, cleanTimes, cleanPost, cleanSys);
+
+  for (const auto& c: cands)
+  {
+    std::cout<<"DELETING: "<<c<<std::endl;
+    remove_all(c);
+  }
+}
+
+
+void VTKFieldToOpenFOAMField(const boost::filesystem::path& vtkfile, const std::string& fieldname, std::ostream& out)
+{
+  vtkSmartPointer<vtkPolyDataReader> in = vtkPolyDataReader::New();
+  in->SetFileName(vtkfile.c_str());
+  in->ReadAllScalarsOn();
+  in->ReadAllVectorsOn();
+  in->ReadAllTensorsOn();
+  in->Update();
+
+  if(in->IsFilePolyData())
+  {
+    vtkPolyData* pd = in->GetOutput();
+
+    if (!pd)
+      throw insight::Exception("Error reading VTK file "+vtkfile.string());
+
+    vtkDataArray* da = pd->GetCellData()->GetArray(fieldname.c_str());
+
+    if (!da)
+    {
+      int na=pd->GetCellData()->GetNumberOfArrays();
+      std::ostringstream m;
+      m<<"Error accessing cell field \""<<fieldname<<"\" in file "<<vtkfile.string()<<"!\n";
+      m<<"Available arrays: (";
+      for (int k=0; k<na; k++)
+      {
+        m<<" "<<pd->GetCellData()->GetArrayName(k);
+      }
+      m<<" )";
+      throw insight::Exception(m.str());
+    }
+
+    vtkIdType ncells=da->GetNumberOfTuples();
+    vtkIdType nc=da->GetNumberOfComponents();
+
+    out << ncells << "\n(\n";
+    for (vtkIdType i=0; i<ncells; i++)
+    {
+      if (nc>1) out<<" (";
+      double *cd = da->GetTuple(i);
+      for (vtkIdType j=0; j<nc; j++) out<<" "<<cd[j];
+      if (nc>1) out<<" )";
+      out<<'\n';
+    }
+    out << ")\n";
+  }
+}
+
+decompositionState::decompositionState(const boost::filesystem::path& casedir)
+{
+  CurrentExceptionContext ce("Checking decomposition state of case in "+casedir.string());
+
+  if (!boost::filesystem::exists(casedir))
+    throw insight::Exception("Case directory "+casedir.string()+" does not exist!");
+
+  int np=1;
+  try
+  {
+    np=readDecomposeParDict(casedir);
+  }
+  catch (...) {} // cannot read decomposeParDict (not existent) => serial case
+
+  std::vector<boost::filesystem::path> procDirs;
+  directory_iterator end_itr; // default construction yields past-the-end
+  for ( directory_iterator itr( casedir );
+          itr != end_itr; itr++ )
+  {
+      if ( is_directory(itr->status()) )
+      {
+          if (starts_with(itr->path().filename().string(), "processor"))
+          {
+            procDirs.push_back(itr->path());
+          }
+      }
+  }
+
+  if (procDirs.size()>0)
+    hasProcessorDirectories=true;
+  else
+    hasProcessorDirectories=false;
+
+  if (procDirs.size()==size_t(np))
+    nProcDirsMatchesDecomposeParDict=true;
+  else
+    nProcDirsMatchesDecomposeParDict=false;
+
+  //
+  // check, if the same latest time step is existing in all processor directories and
+  // has everywhere the same fields
+  //
+  decomposedLatestTimeIsConsistent=true;
+  std::string latestTime;
+  std::set<std::string> fields0;
+  for (auto pd=procDirs.begin(); pd!=procDirs.end(); pd++)
+  {
+    auto tdl = listTimeDirectories(*pd);
+
+    if (pd==procDirs.begin())
+    {
+        if (tdl.size()>0)
+        {
+          latestTime=tdl.rbegin()->second.filename().string();
+          for (const auto& f:
+               boost::filesystem::directory_iterator(tdl.rbegin()->second))
+          {
+            // get list of fields
+            fields0.insert( f.path().filename().string() );
+          }
+        }
+    }
+    else
+    {
+      if (tdl.size()>0)
+      {
+        std::string cur_latestTime=tdl.rbegin()->second.filename().string();
+
+        if (cur_latestTime!=latestTime)
+        {
+          decomposedLatestTimeIsConsistent = false;
+        }
+        else
+        {
+          size_t nfound=0;
+          // check, if the same fields are present
+          for (const auto& f: boost::filesystem::directory_iterator(tdl.rbegin()->second))
+          {
+            if (fields0.find(f.path().filename().string()) != fields0.end())
+            {
+              nfound++;
+            }
+          }
+          decomposedLatestTimeIsConsistent = decomposedLatestTimeIsConsistent
+                                             && (nfound==fields0.size());
+        }
+      }
+    }
+  }
+
+  if (!hasProcessorDirectories)
+  {
+    laterLatestTime=Location::Reconstructed;
+    newerFiles=Location::Reconstructed;
+  }
+  else
+  {
+    if (decomposedLatestTimeIsConsistent)
+    {
+      // check, where the latest time step lies
+      auto tdl = listTimeDirectories(casedir);
+      if (tdl.size()==0)
+      {
+        if (latestTime==std::string())
+        {
+          // neither in decomposed nor reconst case are time steps
+          laterLatestTime=Location::Both;
+          newerFiles=Location::Undefined;
+        }
+        else
+        {
+          // no reconst time steps but time steps in proc dirs
+          laterLatestTime=Location::Decomposed;
+          newerFiles=Location::Decomposed;
+        }
+      }
+      else
+      {
+        if (latestTime==std::string())
+        {
+          // in reconst case are time steps but not in proc dirs
+          laterLatestTime=Location::Reconstructed;
+          newerFiles=Location::Reconstructed;
+        }
+        else
+        {
+          double lt_decomp=boost::lexical_cast<double>(latestTime);
+          if ( fabs(tdl.rbegin()->first - lt_decomp) < 1e-15 )
+          {
+            // same time step in recon and decomp
+            laterLatestTime=Location::Both;
+
+            boost::filesystem::path
+                p_dec = casedir/"processor0"/latestTime,
+                p_rec = tdl.rbegin()->second;
+            bool rec_newer=false, dec_newer=false;
+            for (const auto& f: fields0)
+            {
+              if (
+                  boost::filesystem::last_write_time(p_dec/f)
+                  <
+                  boost::filesystem::last_write_time(p_rec/f)
+                 )
+              {
+                rec_newer=true;
+              }
+              else
+              {
+                dec_newer=true;
+              }
+            }
+            if (rec_newer && dec_newer)
+            {
+              newerFiles=Location::Both;
+            }
+            else if (rec_newer)
+            {
+              newerFiles=Location::Reconstructed;
+            }
+            else if (dec_newer)
+            {
+              newerFiles=Location::Decomposed;
+            }
+            else
+            {
+              newerFiles=Location::Undefined;
+            }
+          }
+          else if ( tdl.rbegin()->first > lt_decomp )
+          {
+            laterLatestTime=Location::Reconstructed;
+            newerFiles=Location::Reconstructed;
+          }
+          else if ( tdl.rbegin()->first < lt_decomp )
+          {
+            laterLatestTime=Location::Decomposed;
+            newerFiles=Location::Decomposed;
+          }
+        }
+      }
+    }
+  }
+
+}
 
 }

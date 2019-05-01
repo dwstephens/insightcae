@@ -26,6 +26,13 @@
 #include <QFileSystemModel>
 #include <QTabWidget>
 #include <QProgressBar>
+#include <QAction>
+#include <QPushButton>
+#include <QSplitter>
+#include <QMenu>
+#include <QMenuBar>
+#include <QFileDialog>
+#include <QMessageBox>
 
 #include "qoccviewercontext.h"
 #include "qoccviewwidget.h"
@@ -78,6 +85,12 @@ protected:
         *act_toggle_clipxy_,
         *act_toggle_clipyz_,
         *act_toggle_clipxz_,
+        *act_view_plusx_,
+        *act_view_minusx_,
+        *act_view_plusy_,
+        *act_view_minusy_,
+        *act_view_plusz_,
+        *act_view_minusz_,
         *act_background_color_,
         *act_display_all_shaded_,
         *act_display_all_wire_,
@@ -121,7 +134,8 @@ public:
     ISCADModelEditor* insertModel(const boost::filesystem::path& file, bool bgparsing=true);
     ISCADModelEditor* insertModelScript(const std::string& contents, bool bgparsing=true);
     virtual void closeEvent(QCloseEvent *event);
-   
+    void readSettings();
+
 signals:
     void fileSelectionChanged(const boost::filesystem::path& file);
 

@@ -25,6 +25,7 @@
 #include "base/analysis.h"
 #include "base/resultset.h"
 #include "parametereditorwidget.h"
+#include "boost/shared_ptr.hpp"
 #endif
 
 #include <QMdiSubWindow>
@@ -34,12 +35,10 @@
 #include <QPushButton>
 #include <QPlainTextEdit>
 
-#include "boost/shared_ptr.hpp"
-
+#include "workbench.h"
 #include "graphprogressdisplayer.h"
 
 #include "qdebugstream.h"
-
 
 
 
@@ -62,10 +61,10 @@ class AnalysisWorker
   Q_OBJECT
   QThread workerThread_;
   
-  boost::shared_ptr<insight::Analysis> analysis_;
+  std::shared_ptr<insight::Analysis> analysis_;
   
 public:
-  AnalysisWorker(const boost::shared_ptr<insight::Analysis>& analysis);
+  AnalysisWorker(const std::shared_ptr<insight::Analysis>& analysis);
   
 public slots:
   void doWork(insight::ProgressDisplayer* pd=NULL);
@@ -79,7 +78,8 @@ signals:
 
 
 class AnalysisForm
-: public QMdiSubWindow
+: public QMdiSubWindow,
+  public workbench::WidgetWithDynamicMenuEntries
 {
   Q_OBJECT
   
@@ -87,7 +87,7 @@ protected:
   std::string analysisName_;
   insight::ParameterSet parameters_;
   
-  boost::shared_ptr<insight::Analysis> analysis_;  
+  std::shared_ptr<insight::Analysis> analysis_;  
   insight::ResultSetPtr results_;
   
   GraphProgressDisplayer *progdisp_;
@@ -103,6 +103,30 @@ protected:
   QPlainTextEdit *log_;
   
   QPushButton *save_log_btn_, *send_log_btn_, *clear_log_btn_, *auto_scroll_down_btn_;
+
+  QMenu *menu_parameters_=nullptr, *menu_actions_=nullptr, *menu_results_=nullptr, *menu_tools_=nullptr, *menu_tools_of_=nullptr;
+  QAction *act_param_show_=nullptr, *act_save_=nullptr, *act_save_as_=nullptr, *act_merge_=nullptr;
+  QAction *act_run_=nullptr, *act_kill_=nullptr;
+  QAction *act_save_rpt_=nullptr;
+  QAction *act_tool_of_paraview_=nullptr, *act_tool_of_clean_=nullptr;
+
+  /**
+   * @brief ist_file_
+   * currently opened file
+   */
+  boost::filesystem::path ist_file_;
+
+  /**
+   * @brief pack_parameterset_
+   * store preference for pack/not packing the parameter set during saving
+   */
+  bool pack_parameterset_;
+
+  /**
+   * @brief is_modified_
+   * whether PS was modified since last save
+   */
+  bool is_modified_;
   
 public:
   AnalysisForm(QWidget* parent, const std::string& analysisName);
@@ -113,19 +137,36 @@ public:
   inline insight::DirectoryParameter& executionPathParameter() { return executionPathParameter_; }
   
   inline void forceUpdate() { emit update(); }
-    
-private slots:
+
+  virtual void insertMenu(QMenuBar* mainMenu);
+  virtual void removeMenu();
+
+  void loadParameters(const boost::filesystem::path& fp);
+  void saveParameters(bool *cancelled=nullptr);
+  void saveParametersAs(bool *cancelled=nullptr);
+
+protected:
+  virtual void	closeEvent ( QCloseEvent * event );
+
+private Q_SLOTS:
   void onSaveParameters();
+  void onSaveParametersAs();
   void onLoadParameters();
   void onRunAnalysis();
   void onKillAnalysis();
   void onResultReady(insight::ResultSetPtr);
   void onCreateReport();
-  
+
+  void onStartPV();
+  void onCleanOFC();
+
   void saveLog();
   void sendLog();
   void clearLog();
   void autoScrollLog();
+  void onShowParameterXML();
+
+  void onConfigModification();
 
 signals:
   void apply();

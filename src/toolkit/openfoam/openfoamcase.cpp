@@ -119,7 +119,7 @@ OFEs OFEs::list;
 std::vector<std::string> OFEs::all()
 {
     std::vector<std::string> entries;
-    BOOST_FOREACH(const value_type& vr, OFEs::list)
+    for (value_type vr: OFEs::list)
     {
 //         std::cout<<vr.first<<std::endl;
         entries.push_back(vr.first);
@@ -147,7 +147,7 @@ std::string OFEs::detectCurrentOFE()
   {
     return std::string();
   }
-  BOOST_FOREACH(const OFEs::value_type& ofe, list)
+  for (OFEs::value_type ofe: list)
   {
     std::vector<std::string> output;
     OpenFOAMCase(*ofe.second).executeCommand(".", "echo $WM_PROJECT_DIR", std::vector<std::string>(), &output);
@@ -173,6 +173,18 @@ const OFEnvironment& OFEs::getCurrent()
   return get( detectCurrentOFE() );
 }
 
+const OFEnvironment& OFEs::getCurrentOrPreferred()
+{
+  try {
+    return get( detectCurrentOFE() );
+  }
+  catch (insight::Exception e)
+  {
+    return get("OFesi1806");
+  }
+}
+
+
 OFEs::OFEs()
 {
   const char *envvar=getenv("INSIGHT_OFES");
@@ -184,7 +196,7 @@ OFEs::OFEs()
   std::string cfgvar(envvar);
   std::vector<std::string> ofestrs;
   boost::split(ofestrs, cfgvar, boost::is_any_of(":"));
-  BOOST_FOREACH(const std::string& ofe, ofestrs)
+  for (const std::string& ofe: ofestrs)
   {
     std::vector<std::string> strs;
     boost::split(strs, ofe, boost::is_any_of("@#"));
@@ -219,6 +231,8 @@ defineType(OpenFOAMCaseElement);
 defineFactoryTable(OpenFOAMCaseElement, LIST ( OpenFOAMCase& c, const ParameterSet& ps ), LIST ( c, ps ));
 defineStaticFunctionTable(OpenFOAMCaseElement, defaultParameters, ParameterSet);
 defineStaticFunctionTable(OpenFOAMCaseElement, category, std::string);
+defineStaticFunctionTable(OpenFOAMCaseElement, validator, ParameterSet_ValidatorPtr);
+defineStaticFunctionTable(OpenFOAMCaseElement, visualizer, ParameterSet_VisualizerPtr);
 
 
 int OpenFOAMCaseElement::OFversion() const 
@@ -226,16 +240,20 @@ int OpenFOAMCaseElement::OFversion() const
   return OFcase().OFversion();
 }
 
-void OpenFOAMCaseElement::modifyMeshOnDisk(const OpenFOAMCase& cm, const boost::filesystem::path& location) const
+void OpenFOAMCaseElement::modifyFilesOnDiskBeforeDictCreation ( const OpenFOAMCase&, const boost::filesystem::path& ) const
 {
 }
 
-void OpenFOAMCaseElement::modifyCaseOnDisk(const OpenFOAMCase& cm, const boost::filesystem::path& location) const
+void OpenFOAMCaseElement::modifyMeshOnDisk(const OpenFOAMCase&, const boost::filesystem::path&) const
+{
+}
+
+void OpenFOAMCaseElement::modifyCaseOnDisk(const OpenFOAMCase&, const boost::filesystem::path&) const
 {
 }
 
 
-void OpenFOAMCaseElement::addFields( OpenFOAMCase& c ) const
+void OpenFOAMCaseElement::addFields( OpenFOAMCase& ) const
 {
 }
 
@@ -245,13 +263,30 @@ OpenFOAMCaseElement::OpenFOAMCaseElement(OpenFOAMCase& c, const std::string& nam
 {
 }
 
-bool OpenFOAMCaseElement::providesBCsForPatch(const std::string& patchName) const
+bool OpenFOAMCaseElement::providesBCsForPatch(const std::string&) const
 {
   return false;
 }
 
 
+std::string OpenFOAMCaseElement::category()
+{ return "Uncategorized"; }
 
+
+ParameterSet_ValidatorPtr OpenFOAMCaseElement::validator()
+{
+  return ParameterSet_ValidatorPtr();
+}
+
+ParameterSet_VisualizerPtr OpenFOAMCaseElement::visualizer()
+{
+  return ParameterSet_VisualizerPtr();
+}
+
+bool OpenFOAMCaseElement::isInConflict(const CaseElement&)
+{
+  return false;
+}
 
 defineType(BoundaryCondition);
 defineFactoryTable
@@ -293,11 +328,11 @@ void BoundaryCondition::addOptionsToBoundaryDict(OFDictData::dict& bndDict) cons
 
 void BoundaryCondition::addIntoFieldDictionaries(OFdicts& dictionaries) const
 {
-  BOOST_FOREACH(const FieldList::value_type& field, OFcase().fields())
+  for (const FieldList::value_type& field: OFcase().fields())
   {
     OFDictData::dictFile& fieldDict=dictionaries.addFieldIfNonexistent("0/"+field.first, field.second);
     OFDictData::dict& boundaryField=fieldDict.addSubDictIfNonexistent("boundaryField");
-    OFDictData::dict& BC=boundaryField.addSubDictIfNonexistent(patchName_);
+    /*OFDictData::dict& BC=*/ boundaryField.addSubDictIfNonexistent(patchName_);
   }
 }
 
@@ -388,6 +423,7 @@ bool BoundaryCondition::providesBCsForPatch(const std::string& patchName) const
 
 
 
+
 defineType(turbulenceModel);
 defineFactoryTable(turbulenceModel, LIST(OpenFOAMCase& ofc, const ParameterSet& ps), LIST(ofc, ps));
 
@@ -401,8 +437,8 @@ turbulenceModel::turbulenceModel(OpenFOAMCase& c, const ParameterSet&)
 SolverOutputAnalyzer::SolverOutputAnalyzer(ProgressDisplayer& pdisp)
 : pdisp_(pdisp),
   curTime_(nan("NAN")),
-  curforcesection_(1),
-  curforcename_("")
+  curforcename_(""),
+  curforcesection_(1)
 {
 }
 
@@ -533,7 +569,6 @@ void SolverOutputAnalyzer::update(const string& line)
             
             if (curTime_ == curTime_)
             {
-            
                 pdisp_.update( ProgressState(curTime_, curProgVars_));
                 curProgVars_.clear();
             }
@@ -575,27 +610,48 @@ bool OpenFOAMCase::isCompressible() const
   return findUniqueElement<FVNumerics>().isCompressible();
 }
 
-boost::shared_ptr<OFdicts> OpenFOAMCase::createDictionaries() const
+bool OpenFOAMCase::hasCyclicBC() const
 {
-  boost::shared_ptr<OFdicts> dictionaries(new OFdicts);
+  std::set<CyclicPairBC*> cyclics = const_cast<OpenFOAMCase*>(this)->findElements<CyclicPairBC>();
+  return (cyclics.size()>0);
+}
+
+
+void OpenFOAMCase::modifyFilesOnDiskBeforeDictCreation ( const boost::filesystem::path& location ) const
+{
+  for (boost::ptr_vector<CaseElement>::const_iterator i=elements_.begin();
+      i!=elements_.end(); i++)
+  {
+    const OpenFOAMCaseElement *e= dynamic_cast<const OpenFOAMCaseElement*>(&(*i));
+    if (e)
+    {
+      e->modifyFilesOnDiskBeforeDictCreation(*this, location);
+    }
+  }
+}
+
+
+std::shared_ptr<OFdicts> OpenFOAMCase::createDictionaries() const
+{
+  std::shared_ptr<OFdicts> dictionaries(new OFdicts);
 
   // populate fields list
   createFieldListIfRequired();
   
   // create field dictionaries first
-  BOOST_FOREACH( const FieldList::value_type& i, fields_)
+  for ( const FieldList::value_type& i: fields_)
   {
     OFDictData::dictFile& field = dictionaries->addFieldIfNonexistent("0/"+i.first, i.second);
     
     const dimensionSet& dimset=boost::fusion::get<1>(i.second);
     std::ostringstream dimss; 
     //dimss << dimset;
-    dimss <<"[ "; BOOST_FOREACH(int c, dimset) dimss <<c<<" "; dimss<<"]";
+    dimss <<"[ "; for (int c: dimset) dimss <<c<<" "; dimss<<"]";
     field["dimensions"] = OFDictData::data( dimss.str() );
     
     std::string vstr="";
     const FieldValue& val = boost::fusion::get<2>(i.second);
-    BOOST_FOREACH( const double& v, val)
+    for ( const double& v: val)
     {
       vstr+=" "+lexical_cast<std::string>(v);
     }
@@ -649,10 +705,10 @@ void OpenFOAMCase::modifyCaseOnDisk(const boost::filesystem::path& location) con
 void OpenFOAMCase::createOnDisk
 (
     const boost::filesystem::path& location, 
-    const boost::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles
+    const std::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles
 )
 {
-  boost::shared_ptr<OFdicts> dictionaries=createDictionaries();
+  std::shared_ptr<OFdicts> dictionaries=createDictionaries();
   createOnDisk(location, dictionaries, restrictToFiles);
 }
 
@@ -660,8 +716,8 @@ void OpenFOAMCase::createOnDisk
 void OpenFOAMCase::createOnDisk
 (
     const boost::filesystem::path& location, 
-    boost::shared_ptr<OFdicts> dictionaries, 
-    const boost::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles
+    std::shared_ptr<OFdicts> dictionaries, 
+    const std::shared_ptr<std::vector<boost::filesystem::path> > restrictToFiles
 )
 {
   boost::filesystem::path basepath(location);
@@ -677,9 +733,9 @@ void OpenFOAMCase::createOnDisk
     if (restrictToFiles)
     {
         ok_to_create=false;
-        BOOST_FOREACH(boost::filesystem::path fp, *restrictToFiles)
+        for (boost::filesystem::path fp: *restrictToFiles)
         {
-            if ( dictpath == fp ) ok_to_create=true;
+            if ( boost::filesystem::equivalent(dictpath, fp) ) ok_to_create=true;
         }
     }
     
@@ -723,7 +779,7 @@ bool OpenFOAMCase::outputTimesPresentOnDisk( const boost::filesystem::path& loca
   {
     readOpenFOAMDict(location/"system"/"controlDict", controlDict);
   }
-  catch (const insight::Exception& e)
+  catch (const insight::Exception&)
   {
     return false;
   }
@@ -875,19 +931,24 @@ std::vector< string > OpenFOAMCase::fieldNames() const
 {
     createFieldListIfRequired();
   std::vector<std::string> fns;
-  BOOST_FOREACH(const FieldList::value_type& v, fields_)
+  for (const FieldList::value_type& v: fields_)
   {
     fns.push_back(v.first);
   }
   return fns;
 }
 
+bool OpenFOAMCase::hasField(const std::string& fname ) const
+{
+  createFieldListIfRequired();
+  return fields_.find ( fname ) != fields_.end();
+}
 
 void OpenFOAMCase::createFieldListIfRequired() const
 {
   if ( !fieldListCompleted_ )
     {
-      FieldList& fields = const_cast<FieldList&> ( fields_ );
+//      FieldList& fields = const_cast<FieldList&> ( fields_ );
 
       for ( boost::ptr_vector<CaseElement>::const_iterator i=elements_.begin();
             i!=elements_.end(); i++ )
@@ -942,33 +1003,6 @@ void OpenFOAMCase::parseBoundaryDict(const boost::filesystem::path& location, OF
       throw insight::Exception("Failed to parse boundary dict "+dictpath.string());
 }
 
-/*
-void OpenFOAMCase::addRemainingBCs(OFDictData::dict& boundaryDict, const std::string& className)
-{
-  typedef std::set<std::string> StringSet;
-  StringSet unhandledPatches;
-  BOOST_FOREACH(const OFDictData::dict::value_type& bde, boundaryDict)
-  {
-    unhandledPatches.insert(bde.first);
-  }
-  
-  for (boost::ptr_vector<CaseElement>::const_iterator i=elements_.begin();
-       i!=elements_.end(); i++)
-       {
-	 const BoundaryCondition *e= dynamic_cast<const BoundaryCondition*>(&(*i));
-	 if (e)
-	 {
-	   StringSet::iterator i=unhandledPatches.find(e->patchName());
-	   if (i!=unhandledPatches.end()) unhandledPatches.erase(i);
-	 }
-       }
-       
-  for (StringSet::const_iterator i=unhandledPatches.begin(); i!=unhandledPatches.end(); i++)
-  {
-    insert(new SimpleBC(*this, *i, boundaryDict, className));  
-  }
-}
-*/
 
 std::string OpenFOAMCase::cmdString
 (
@@ -986,7 +1020,7 @@ const
     "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$INSIGHT_LIBDIR/$WM_PROJECT-$WM_PROJECT_VERSION;"
     "cd \""+boost::filesystem::absolute(location).string()+"\";"
     + cmd;
-  BOOST_FOREACH(std::string& arg, argv)
+  for (std::string& arg: argv)
   {
     shellcmd+=" \""+arg+"\"";
   }
@@ -1065,7 +1099,7 @@ std::set<std::string> OpenFOAMCase::getUnhandledPatches(OFDictData::dict& bounda
 {
   typedef std::set<std::string> StringSet;
   StringSet unhandledPatches;
-  BOOST_FOREACH(const OFDictData::dict::value_type& bde, boundaryDict)
+  for (const OFDictData::dict::value_type& bde: boundaryDict)
   {
     unhandledPatches.insert(bde.first);
   }
@@ -1074,7 +1108,7 @@ std::set<std::string> OpenFOAMCase::getUnhandledPatches(OFDictData::dict& bounda
       i!=elements_.end(); i++)
       {
 	const OpenFOAMCaseElement* e= dynamic_cast<const OpenFOAMCaseElement*>(&(*i));
-	BOOST_FOREACH(const OFDictData::dict::value_type& bde, boundaryDict)
+	for (const OFDictData::dict::value_type& bde: boundaryDict)
 	{
 	  std::string pn(bde.first);
 	  
@@ -1084,15 +1118,7 @@ std::set<std::string> OpenFOAMCase::getUnhandledPatches(OFDictData::dict& bounda
 	    if (i!=unhandledPatches.end()) unhandledPatches.erase(i);
 	  }
 	}
-	
-	/*
-	const BoundaryCondition *e= dynamic_cast<const BoundaryCondition*>(&(*i));
-	if (e)
-	{
-	  StringSet::iterator i=unhandledPatches.find(e->patchName());
-	  if (i!=unhandledPatches.end()) unhandledPatches.erase(i);
-	}
-	*/
+
       }
       
    return unhandledPatches;

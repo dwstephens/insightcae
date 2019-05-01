@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
     if (vm.count("libs"))
     {
         StringList libs=vm["libs"].as<StringList>();
-        BOOST_FOREACH(const string& l, libs)
+        for (const string& l: libs)
         {
             if (!boost::filesystem::exists(l))
             {
@@ -169,7 +169,7 @@ int main(int argc, char *argv[])
         if (vm.count("merge"))
         {
             StringList ists=vm["merge"].as<StringList>();
-            BOOST_FOREACH(const string& ist, ists)
+            for (const string& ist: ists)
             {
 // 	ParameterSet to_merge;
                 parameters.readFromFile(ist);
@@ -179,7 +179,7 @@ int main(int argc, char *argv[])
         if (vm.count("bool"))
         {
             StringList sets=vm["bool"].as<StringList>();
-            BOOST_FOREACH(const string& s, sets)
+            for (const string& s: sets)
             {
                 std::vector<std::string> pair;
                 boost::split(pair, s, boost::is_any_of(":"));
@@ -192,7 +192,7 @@ int main(int argc, char *argv[])
         if (vm.count("string"))
         {
             StringList sets=vm["string"].as<StringList>();
-            BOOST_FOREACH(const string& s, sets)
+            for (const string& s: sets)
             {
                 std::vector<std::string> pair;
                 boost::split(pair, s, boost::is_any_of(":"));
@@ -204,7 +204,7 @@ int main(int argc, char *argv[])
         if (vm.count("selection"))
         {
             StringList sets=vm["selection"].as<StringList>();
-            BOOST_FOREACH(const string& s, sets)
+            for (const string& s: sets)
             {
                 std::vector<std::string> pair;
                 boost::split(pair, s, boost::is_any_of(":"));
@@ -216,7 +216,7 @@ int main(int argc, char *argv[])
         if (vm.count("path"))
         {
             StringList sets=vm["path"].as<StringList>();
-            BOOST_FOREACH(const string& s, sets)
+            for (const string& s: sets)
             {
                 std::vector<std::string> pair;
                 boost::split(pair, s, boost::is_any_of(":"));
@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
         if (vm.count("double"))
         {
             StringList sets=vm["double"].as<StringList>();
-            BOOST_FOREACH(const string& s, sets)
+            for (const string& s: sets)
             {
                 std::vector<std::string> pair;
                 boost::split(pair, s, boost::is_any_of(":"));
@@ -241,7 +241,7 @@ int main(int argc, char *argv[])
         if (vm.count("vector"))
         {
             StringList sets=vm["vector"].as<StringList>();
-            BOOST_FOREACH(const string& s, sets)
+            for (const string& s: sets)
             {
                 std::vector<std::string> pair;
                 boost::split(pair, s, boost::is_any_of(":"));
@@ -255,7 +255,7 @@ int main(int argc, char *argv[])
         if (vm.count("int"))
         {
             StringList sets=vm["int"].as<StringList>();
-            BOOST_FOREACH(const string& s, sets)
+            for (const string& s: sets)
             {
                 std::vector<std::string> pair;
                 boost::split(pair, s, boost::is_any_of(":"));
@@ -270,6 +270,11 @@ int main(int argc, char *argv[])
             parameters.saveToFile( exedir/ vm["savecfg"].as<std::string>() );
         }
 //         analysis->setParameters(parameters);
+
+        std::cout<<std::string(80, '=')+'\n';
+        std::cout<<"Applied Parameters for this run"<<std::endl;
+        std::cout<<parameters;
+        std::cout<<std::string(80, '=')+"\n\n";
 
         AnalysisPtr analysis ( insight::Analysis::lookup(analysisName, parameters, exedir) );        
         
@@ -287,7 +292,7 @@ int main(int argc, char *argv[])
         {
             for (int i=0; i<2; i++)
             {
-                if ( ::system( str( format("cd %s && pdflatex \"%s\"") % exedir.string() % outpath.string() ).c_str() ))
+                if ( ::system( str( format("cd %s && pdflatex -interaction=batchmode \"%s\"") % exedir.string() % outpath.string() ).c_str() ))
                 {
                     Warning("TeX input file was written but could not execute pdflatex successfully.");
                     break;

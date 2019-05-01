@@ -303,7 +303,7 @@ void writeOpenFOAMBoundaryDict(std::ostream& out, const OFDictData::dictFile& d)
 {
   typedef std::map<int, std::string> Ordering;
   Ordering ord;
-  BOOST_FOREACH( const OFDictData::dictFile::value_type& i, d )
+  for ( const OFDictData::dictFile::value_type& i: d )
   {
     ord[d.subDict(i.first).getInt("startFace")] = i.first;
   }
@@ -320,14 +320,15 @@ void writeOpenFOAMBoundaryDict(std::ostream& out, const OFDictData::dictFile& d)
     out << d.size() << endl
 	<< "(" << endl;
 	
-    //for (OFDictData::dict::const_iterator i=d.begin(); i!=d.end(); i++)
-//     BOOST_FOREACH( const Ordering::value_type& i, ord )
-//     {
-//       std::cout<<i.first<<" = "<<i.second<<std::endl;
-//       const OFDictData::dict& di = d.subDict(i.second);
-//       out<< i.second << " " << di << ";\n";
-//     }
-    
+    for (const auto& j: ord)
+    {
+      auto i=d.find(j.second);
+      out<< i->first << "\n" << i->second;
+//       const OFDictData::data* o=&(i->second);
+      //if (!boost::get<OFDictData::dict>(o)) out<<";";
+      out << "\n";
+    }
+
     out << ")" << endl;
 }
 

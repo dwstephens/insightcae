@@ -22,7 +22,7 @@
 #include "base/factory.h"
 #include "openfoam/blockmesh.h"
 #include "openfoam/openfoamtools.h"
-#include "openfoam/basiccaseelements.h"
+#include "openfoam/caseelements/basiccaseelements.h"
 #include "refdata.h"
 
 #include <boost/assign/list_of.hpp>
@@ -235,7 +235,7 @@ void ChannelBase::createMesh
   PSDBL(parameters(), "geometry", H);
   PSDBL(parameters(), "geometry", B);
   PSDBL(parameters(), "geometry", L);
-  PSDBL(parameters(), "operation", Re_tau);
+//  PSDBL(parameters(), "operation", Re_tau);
   
   cm.insert(new MeshingNumerics(cm));
   
@@ -245,7 +245,7 @@ void ChannelBase::createMesh
 //   bmd->setDefaultPatch("walls", "wall");
   
   
-  double al = M_PI/2.;
+//  double al = M_PI/2.;
   
   std::map<int, Point> pts;
   pts = boost::assign::map_list_of   
@@ -388,7 +388,6 @@ void ChannelBase::createCase
   {
     cm.insert(new simpleFoamNumerics(cm, simpleFoamNumerics::Parameters()
       .set_checkResiduals(false) // don't stop earlier since averaging should be completed
-      .set_hasCyclics(true)
       .set_Uinternal(vec3(Ubulk_,0,0))
       .set_decompositionMethod(FVNumerics::Parameters::decompositionMethod_type::hierarchical)
       .set_endTime(end_)
@@ -401,9 +400,14 @@ void ChannelBase::createCase
   {
     cm.insert( new pimpleFoamNumerics(cm, pimpleFoamNumerics::Parameters()
       .set_LESfilteredConvection(p.run.filteredconvection)
-      .set_maxDeltaT(0.25*T_)
+//      .set_maxDeltaT(0.25*T_)
+      .set_time_integration(PIMPLESettings::Parameters()
+        .set_timestep_control(PIMPLESettings::Parameters::timestep_control_adjust_type(
+          1,
+          0.25*T_
+        ))
+       )
       .set_Uinternal(vec3(Ubulk_,0,0))
-      .set_hasCyclics(true)
       .set_writeControl(FVNumerics::Parameters::writeControl_type::adjustableRunTime)
       .set_writeInterval(0.25*T_)
       .set_endTime( end_ )
@@ -493,7 +497,7 @@ void ChannelBase::createCase
 
 
 
-void ChannelBase::applyCustomOptions(OpenFOAMCase& cm, boost::shared_ptr<OFdicts>& dicts)
+void ChannelBase::applyCustomOptions(OpenFOAMCase& cm, std::shared_ptr<OFdicts>& dicts)
 {
   Parameters p(parameters_);
   
@@ -514,7 +518,7 @@ void ChannelBase::applyCustomOptions(OpenFOAMCase& cm, boost::shared_ptr<OFdicts
 
 void ChannelBase::evaluateAtSection(
   OpenFOAMCase& cm, 
-  ResultSetPtr results, double x, int i,
+  ResultSetPtr results, double x, int /*i*/,
   Ordering& o,
   bool includeRefDataInCharts,
   bool includeAllComponentsInCharts,
@@ -533,7 +537,7 @@ void ChannelBase::evaluateAtSection(
   bool isfirstslice=false;
   if (xByH<=1e-3) isfirstslice=true;
 
-  boost::shared_ptr<ResultSection> section
+  std::shared_ptr<ResultSection> section
   (
     new ResultSection
     (
@@ -554,11 +558,11 @@ void ChannelBase::evaluateAtSection(
         
         arma::mat yp=arma::zeros(probe_locations_.size(),1);
         for(size_t i=0; i<probe_locations_.size(); i++) yp(i)=Re_tau*(1.+probe_locations_[i](1));
-        int npts=yp.n_elem;
-        int ictr=npts-1;
+        arma::uword npts=yp.n_elem;
+        arma::uword ictr=npts-1;
         
         arma::mat t, U[3], U_mean[3], U_var[3], Uprime[3];
-        for(int i=0; i<3; i++)
+        for(arma::uword i=0; i<3; i++)
         {
             arma::mat t_full=U_vs_t.slice(i).col(0);
             arma::uvec valid_rows=arma::find(t_full>avgStart_);
@@ -692,7 +696,7 @@ void ChannelBase::evaluateAtSection(
 
   // Mean velocity profiles
   {
-    int c=cd[UMeanName_].col;
+    arma::uword c( cd[UMeanName_].col );
     
     arma::mat axial(join_rows(Re_tau-Re_tau*data.col(0), data.col(c)));
     arma::mat wallnormal(join_rows(Re_tau-Re_tau*data.col(0), data.col(c+1)));
@@ -702,7 +706,7 @@ void ChannelBase::evaluateAtSection(
     wallnormal.save( (executionPath()/("umeanwallnormal_vs_yp_"+title+".txt")).c_str(), arma::raw_ascii);
     spanwise.save( (executionPath()/("umeanspanwise_vs_yp_"+title+".txt")).c_str(), arma::raw_ascii);
     
-    std::vector<PlotCurve> plotcurves = list_of
+    PlotCurveList plotcurves = list_of
       (PlotCurve(axial, 		"U", "w l lt 1 lc -1 lw 2 t '$U^+$'"))
       (PlotCurve(wallnormal, 	"V", "w l lt 1 lc 1 lw 2 t '$V^+$'"))
       (PlotCurve(spanwise, 		"W", "w l lt 1 lc 3 lw 2 t '$W^+$'"))
@@ -710,7 +714,7 @@ void ChannelBase::evaluateAtSection(
       
     if (includeRefDataInCharts)
     {
-      std::vector<PlotCurve> pc = list_of
+      PlotCurveList pc = list_of
         (PlotCurve(refdata_umean180,	"UMKM180", "w l lt 2 lc -1 t '$U_{ref}^+(Re_{\\tau}=180)$'"))
         (PlotCurve(refdata_wmean180, 	"WMKM180", "w l lt 2 lc 3 t '$W_{ref}^+(Re_{\\tau}=180)$'"))
         (PlotCurve(refdata_umean395, 	"UMKM395", "w l lt 4 lc -1 t '$U_{ref}^+(Re_{\\tau}=395)$'"))
@@ -744,7 +748,7 @@ void ChannelBase::evaluateAtSection(
     arma::mat Lt2=ydelta*0.5*H*0.41;
     //arma::mat Lt=arma::min(Lt1, Lt2);
     arma::mat Lt=Lt1;
-    for (int i=0; i<Lt2.n_rows; i++) Lt(i)=min(Lt(i), Lt2(i));
+    for (arma::uword i=0; i<Lt2.n_rows; i++) Lt(i)=min(Lt(i), Lt2(i));
     arma::mat Ltp(join_rows(ydelta, Lt));
     Ltp.save( (executionPath()/("LdeltaRANS_vs_yp_"+title+".txt")).c_str(), arma::raw_ascii);
     
@@ -889,7 +893,7 @@ void ChannelBase::evaluateAtSection(
     spanwise.save( 	( executionPath()/( "Rspanwise_vs_yp_"		+title+".txt") ).c_str(), arma::raw_ascii);
     
     
-    std::vector<PlotCurve> plotcurves =
+    PlotCurveList plotcurves =
       list_of
        (PlotCurve(axial, 	"Ruu", "w l lt 1 lc -1 lw 2 t '$R_{uu}^+$'"))
        (PlotCurve(wallnormal, 	"Rvv", "w l lt 1 lc 1 lw 2 t '$R_{vv}^+$'"))
@@ -899,7 +903,7 @@ void ChannelBase::evaluateAtSection(
        
     if (includeAllComponentsInCharts)
     {
-      std::vector<PlotCurve> pc =
+      PlotCurveList pc =
       list_of
         (PlotCurve(join_rows(yplus, Rxz), "Ruw", "w l lt 1 lc 5 t '$R_{uw}^+$'"))
         (PlotCurve(join_rows(yplus, Ryz), "Rvw", "w l lt 1 lc 5 t '$R_{vw}^+$'"))
@@ -909,7 +913,7 @@ void ChannelBase::evaluateAtSection(
        
     if (includeRefDataInCharts)
     {
-      std::vector<PlotCurve> pc =
+      PlotCurveList pc =
       list_of
         (PlotCurve(refdata_Ruu, 	"RuuMKM180", "w l lt 2 dt 2 lc -1 t '$R_{uu,ref}^+(Re_{\\tau}=180)$'"))
         (PlotCurve(refdata_Rvv, 	"RvvMKM180", "w l lt 2 dt 2 lc 1 t '$R_{vv,ref}^+(Re_{\\tau}=180)$'"))
@@ -948,9 +952,9 @@ void ChannelBase::evaluateAtSection(
 
     chart_name="chartMeanTKE_"+title;
     
-    int ck=cd["k"].col;
+    arma::uword ck=cd["k"].col;
     
-    std::vector<PlotCurve> kplots = list_of
+    PlotCurveList kplots = list_of
      (PlotCurve( refdata_K, 	"TKEMKM180", "u 1:2 w l lt 1 dt 2 lc 1 t 'DNS ($Re_{\\tau}=180$, MKM)'" ))
      (PlotCurve( refdata_K395, 	"TKEMKM395", "u 1:2 w l lt 2 dt 2 lc 1 t 'DNS ($Re_{\\tau}=395$, MKM)'" ))
      (PlotCurve( refdata_K590, 	"TKEMKM590", "u 1:2 w l lt 3 dt 2 lc 1 t 'DNS ($Re_{\\tau}=590$, MKM)'" ))
@@ -1063,7 +1067,7 @@ void ChannelBase::evaluateAtSection(
 ResultSetPtr ChannelBase::evaluateResults(OpenFOAMCase& cm)
 {
   const ParameterSet& p=parameters_;
-  PSDBL(p, "geometry", B);
+//  PSDBL(p, "geometry", B);
   PSDBL(p, "geometry", H);
   PSDBL(p, "geometry", L);
   PSDBL(p, "operation", Re_tau);
@@ -1274,9 +1278,9 @@ void ChannelCyclic::applyCustomPreprocessing(OpenFOAMCase& cm)
   OpenFOAMAnalysis::applyCustomPreprocessing(cm);
 }
 
-void ChannelCyclic::applyCustomOptions(OpenFOAMCase& cm, boost::shared_ptr<OFdicts>& dicts)
+void ChannelCyclic::applyCustomOptions(OpenFOAMCase& cm, std::shared_ptr<OFdicts>& dicts)
 {
-  const ParameterSet& p=parameters_;
+//  const ParameterSet& p=parameters_;
 
   ChannelBase::applyCustomOptions(cm, dicts);
   

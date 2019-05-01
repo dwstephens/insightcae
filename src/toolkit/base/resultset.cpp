@@ -29,11 +29,12 @@
 #include <algorithm>
 #include "boost/bind.hpp"
 
-#include "gnuplot-iostream.h"
 
 #include "case.h"
 
 #include "rapidxml/rapidxml_print.hpp"
+
+#include "gnuplot-iostream.h"
 
 using namespace std;
 using namespace boost;
@@ -221,7 +222,7 @@ void ResultElementCollection::writeLatexCodeOfElements
     const boost::filesystem::path& outputfilepath
 ) const
 {
-    std::vector<value_type> items;
+    std::vector<std::pair<key_type,mapped_type> > items;
 
 //   std::transform
 //   (
@@ -235,21 +236,21 @@ void ResultElementCollection::writeLatexCodeOfElements
     (
         begin(),
         end(),
-    [&items] ( const value_type& p ) {
-        items.push_back ( p );
-    }
+        [&items] ( const value_type& p ) {
+            items.push_back ( p );
+        }
     );
 
     std::sort
     (
         items.begin(),
         items.end(),
-    [] ( const value_type &left, const value_type &right ) {
-        return left.second->order() < right.second->order();
-    }
+        [] ( const value_type &left, const value_type &right ) {
+              return left.second->order() < right.second->order();
+          }
     );
 
-    BOOST_FOREACH ( const value_type& re, items ) {
+    for ( const value_type& re: items ) {
         const ResultElement* r = & ( *re.second );
 
 //         std::cout<<re.first<<" order="<<re.second->order() <<std::endl;
@@ -331,7 +332,7 @@ void ResultSection::writeLatexCode ( ostream& f, const string& name, int level, 
 
 void ResultSection::writeLatexHeaderCode ( ostream& f ) const
 {
-    BOOST_FOREACH ( const value_type& i, *this ) {
+    for ( const value_type& i: *this ) {
         i.second->writeLatexHeaderCode ( f );
     }
 }
@@ -344,7 +345,7 @@ void ResultSection::exportDataToFile ( const string& name, const path& outputdir
         boost::filesystem::create_directories ( subdir );
     }
 
-    BOOST_FOREACH ( const value_type& re, *this ) {
+    for ( const value_type& re: *this ) {
         re.second->exportDataToFile ( re.first, subdir );
     }
 }
@@ -372,14 +373,14 @@ xml_node< char >* ResultSection::appendToNode ( const string& name, xml_document
 }
 
 
-boost::shared_ptr< ResultElement > ResultSection::clone() const
+std::shared_ptr< ResultElement > ResultSection::clone() const
 {
-    boost::shared_ptr<ResultSection> res( new ResultSection ( sectionName_ ) );
-    BOOST_FOREACH ( const value_type& re, *this ) {
+    std::shared_ptr<ResultSection> res( new ResultSection ( sectionName_ ) );
+    for ( const value_type& re: *this ) {
         ( *res ) [re.first] = re.second->clone();
     }
     res->setOrder ( order() );
-    return boost::dynamic_pointer_cast<ResultElement>( res );
+    return std::dynamic_pointer_cast<ResultElement>( res );
 }
 
 
@@ -533,6 +534,38 @@ ResultElementPtr ScalarResult::clone() const
 
 
 
+defineType ( VectorResult );
+addToFactoryTable ( ResultElement, VectorResult );
+
+
+VectorResult::VectorResult ( const std::string& shortdesc, const std::string& longdesc, const std::string& unit )
+    : NumericalResult< arma::mat > ( shortdesc, longdesc, unit )
+{
+}
+
+
+VectorResult::VectorResult ( const arma::mat& value, const string& shortDesc, const string& longDesc, const string& unit )
+    : NumericalResult< arma::mat > ( value, shortDesc, longDesc, unit )
+{}
+
+
+void VectorResult::writeLatexCode ( ostream& f, const std::string& name, int level, const boost::filesystem::path& outputfilepath ) const
+{
+//   f.setf(ios::fixed,ios::floatfield);
+//   f.precision(3);
+    f << str ( format ( "(%g %g %g)" ) % value_(0) % value_(1) % value_(2) ) << unit_.toLaTeX();
+}
+
+
+ResultElementPtr VectorResult::clone() const
+{
+    ResultElementPtr res ( new VectorResult ( value_, shortDescription_.simpleLatex(), longDescription_.simpleLatex(), unit_.simpleLatex() ) );
+    res->setOrder ( order() );
+    return res;
+}
+
+
+
 defineType ( TabularResult );
 addToFactoryTable ( ResultElement, TabularResult );
 
@@ -585,7 +618,7 @@ void TabularResult::setCellByName ( TabularResult::Row& r, const string& colname
     if ( ii==headings_.end() ) {
         std::ostringstream msg;
         msg<<"Tried to write into column "+colname+" but this does not exist! Existing columns are:"<<endl;
-        BOOST_FOREACH ( const std::string& n, headings_ ) {
+        for ( const std::string& n: headings_ ) {
             msg<<n<<endl;
         }
         insight::Exception ( msg.str() );
@@ -601,7 +634,7 @@ arma::mat TabularResult::getColByName ( const string& colname ) const
     if ( ii==headings_.end() ) {
         std::ostringstream msg;
         msg<<"Tried to get column "+colname+" but this does not exist! Existing columns are:"<<endl;
-        BOOST_FOREACH ( const std::string& n, headings_ ) {
+        for ( const std::string& n: headings_ ) {
             msg<<n<<endl;
         }
         insight::Exception ( msg.str() );
@@ -616,9 +649,9 @@ arma::mat TabularResult::toMat() const
     arma::mat res;
     res.resize ( rows_.size(), rows_[0].size() );
     int i=0;
-    BOOST_FOREACH ( const std::vector<double>& row, rows_ ) {
+    for ( const std::vector<double>& row: rows_ ) {
         int j=0;
-        BOOST_FOREACH ( double v, row ) {
+        for ( double v: row ) {
 //             cout<<"res("<<i<<","<<j<<")="<<v<<endl;
             res ( i, j++ ) =v;
         }
@@ -631,13 +664,13 @@ arma::mat TabularResult::toMat() const
 void TabularResult::writeGnuplotData ( std::ostream& f ) const
 {
     f<<"#";
-    BOOST_FOREACH ( const std::string& head, headings_ ) {
+    for ( const std::string& head: headings_ ) {
         f<<" \""<<head<<"\"";
     }
     f<<std::endl;
 
-    BOOST_FOREACH ( const std::vector<double>& row, rows_ ) {
-        BOOST_FOREACH ( double v, row ) {
+    for ( const std::vector<double>& row: rows_ ) {
+        for ( double v: row ) {
             f<<" "<<v;
         }
         f<<std::endl;
@@ -675,11 +708,11 @@ void TabularResult::writeLatexCode ( std::ostream& f, const std::string& name, i
   }
   if (ccolset.size()>0) colsets.push_back(ccolset);
 
-  BOOST_FOREACH(const std::vector<int>& cols, colsets)
+  for (const std::vector<int>& cols: colsets)
   {
     f<<
      "\\begin{longtable}{";
-    BOOST_FOREACH(int c, cols) {
+    for (int c: cols) {
         f<<"c";
     }
     f<<"}\n";
@@ -749,16 +782,17 @@ void TabularResult::exportDataToFile ( const string& name, const path& outputdir
     std::ofstream f ( fname.c_str() );
 
     std::string sep="";
-    BOOST_FOREACH ( const std::string& h, headings_ ) {
+    for ( const std::string& h: headings_ ) {
         f<<sep<<"\""<<h<<"\"";
         sep=";";
     }
     f<<endl;
 
-    BOOST_FOREACH ( const Row& r, rows_ ) {
+    for ( const Row& r: rows_ ) {
         sep="";
-        BOOST_FOREACH ( const double& v, r ) {
+        for ( const double& v: r ) {
             f<<sep<<v;
+            sep=";";
         }
         f<<endl;
     }
@@ -1126,14 +1160,23 @@ void ResultSet::writeLatexFile ( const boost::filesystem::path& file ) const
 
 void ResultSet::generatePDF ( const boost::filesystem::path& file ) const
 {
-  TemporaryCaseDir gendir;
   std::string stem = file.filename().stem().string();
+
+  {
+      path outdir ( file.parent_path() / ( "report_data_"+stem ) );
+      create_directory ( outdir );
+      for ( ResultSet::const_iterator i=begin(); i!=end(); i++ ) {
+          i->second->exportDataToFile ( i->first, outdir );
+      }
+  }
+
+  TemporaryCaseDir gendir;
   boost::filesystem::path outpath = gendir.dir / (stem+".tex");
   writeLatexFile( outpath );
 
   for (int i=0; i<2; i++)
   {
-      if ( ::system( str( format("cd \"%s\" && pdflatex -interaction=nonstopmode \"%s\"") % gendir.dir.string() % outpath.filename().string() ).c_str() ))
+      if ( ::system( str( format("cd \"%s\" && pdflatex -interaction=batchmode \"%s\"") % gendir.dir.string() % outpath.filename().string() ).c_str() ))
       {
           throw insight::Exception("TeX input file was written but could not execute pdflatex successfully.");
       }
@@ -1141,13 +1184,6 @@ void ResultSet::generatePDF ( const boost::filesystem::path& file ) const
 
   boost::filesystem::copy_file( gendir.dir/ (stem+".pdf"), file, copy_option::overwrite_if_exists );
 
-  {
-      path outdir ( gendir.dir / ( "report_data_"+stem ) );
-      create_directory ( outdir );
-      for ( ResultSet::const_iterator i=begin(); i!=end(); i++ ) {
-          i->second->exportDataToFile ( i->first, outdir );
-      }
-  }
 }
 
 
@@ -1219,7 +1255,7 @@ void ResultElementCollection::readFromFile ( const boost::filesystem::path& file
 ParameterSetPtr ResultSet::convertIntoParameterSet() const
 {
     ParameterSetPtr ps ( new ParameterSet() );
-    BOOST_FOREACH ( const_iterator::value_type rp, *this ) {
+    for ( const_iterator::value_type rp: *this ) {
         ParameterPtr p=rp.second->convertIntoParameter();
         if ( p ) {
             std::string key=rp.first;
@@ -1372,7 +1408,7 @@ std::string PlotCurve::title() const
 
 insight::ResultElement& addPlot
 (
-    boost::shared_ptr<ResultElementCollection> results,
+    std::shared_ptr<ResultElementCollection> results,
     const boost::filesystem::path& workdir,
     const std::string& resultelementname,
     const std::string& xlabel,
@@ -1400,6 +1436,42 @@ insight::ResultElement& addPlot
                                  precmd
                              ) );
 }
+
+
+
+
+insight::ResultElement& addPolarPlot
+(
+    std::shared_ptr<ResultElementCollection> results,
+    const boost::filesystem::path& workdir,
+    const std::string& resultelementname,
+    const std::string& rlabel,
+    const PlotCurveList& plc,
+    const std::string& shortDescription,
+    double phi_unit,
+    const std::string& addinit,
+    const std::string& watermarktext
+)
+{
+    std::string precmd=addinit+";";
+    if ( watermarktext!="" ) {
+        precmd+=
+          "set label "
+          "'"+SimpleLatex( watermarktext ).toLaTeX()+"'"
+          " center at screen 0.5, 0.5 tc rgb\"#cccccc\" rotate by 30 font \",24\";"
+          ;
+    }
+
+    return results->insert ( resultelementname,
+                             new PolarChart
+                             (
+                                 rlabel, plc,
+                                 shortDescription, "",
+                                 phi_unit,
+                                 precmd
+                             ) );
+}
+
 
 
 
@@ -1432,6 +1504,50 @@ Chart::Chart
 }
 
 
+void Chart::gnuplotCommand(gnuplotio::Gnuplot& gp) const
+{
+ gp<<addinit_<<";";
+ gp<<"set xlabel '"<<xlabel_<<"'; set ylabel '"<<ylabel_<<"'; set grid; ";
+ if ( plc_.size() >0 )
+ {
+  gp<<"plot ";
+  bool is_first=true;
+
+  if (plc_.include_zero)
+  {
+   gp<<"0 not lt -1";
+   is_first=false;
+  }
+
+  for ( const PlotCurve& pc: plc_ )
+  {
+   if ( !pc.plotcmd_.empty() )
+   {
+    if (!is_first) { gp << ","; is_first=false; }
+    if ( pc.xy_.n_rows>0 )
+    {
+     gp<<"'-' "<<pc.plotcmd_;
+    } else
+    {
+     gp<<pc.plotcmd_;
+    }
+   }
+  }
+
+  gp<<endl;
+
+  for ( const PlotCurve& pc: plc_ )
+  {
+   if ( pc.xy_.n_rows>0 )
+   {
+    gp.send1d ( pc.xy_ );
+   }
+  }
+
+ }
+}
+
+
 
 void Chart::generatePlotImage ( const path& imagepath ) const
 {
@@ -1459,26 +1575,8 @@ void Chart::generatePlotImage ( const path& imagepath ) const
         	"set linetype  9 lc rgb '#DAA520' lw 1;"
         	"set linetype cycle  9;";
         */
-        gp<<addinit_<<";";
-        gp<<"set xlabel '"<<xlabel_<<"'; set ylabel '"<<ylabel_<<"'; set grid; ";
-        if ( plc_.size() >0 ) {
-            gp<<"plot 0 not lt -1";
-            BOOST_FOREACH ( const PlotCurve& pc, plc_ ) {
-                if ( !pc.plotcmd_.empty() ) {
-                    if ( pc.xy_.n_rows>0 ) {
-                        gp<<", '-' "<<pc.plotcmd_;
-                    } else {
-                        gp<<", "<<pc.plotcmd_;
-                    }
-                }
-            }
-            gp<<endl;
-            BOOST_FOREACH ( const PlotCurve& pc, plc_ ) {
-                if ( pc.xy_.n_rows>0 ) {
-                    gp.send1d ( pc.xy_ );
-                }
-            }
-        }
+
+       gnuplotCommand(gp);
     }
 
     ::system (
@@ -1486,7 +1584,7 @@ void Chart::generatePlotImage ( const path& imagepath ) const
             "mv "+bn+".tex "+ ( tmp.dir/ ( bn+".tex" ) ).string()+"; "
             "mv "+bn+"-inc.eps "+ ( tmp.dir/ ( bn+"-inc.eps" ) ).string()+"; "
             "cd "+tmp.dir.string()+"; "
-            "pdflatex -shell-escape "+bn+".tex; "
+            "pdflatex -interaction=batchmode -shell-escape "+bn+".tex; "
             "convert -density 600 "+bn+".pdf "+absolute ( imagepath ).string()
         ).c_str() );
 }
@@ -1519,7 +1617,7 @@ void Chart::writeLatexCode ( std::ostream& f, const std::string& name, int level
 void Chart::exportDataToFile ( const std::string& name, const boost::filesystem::path& outputdirectory ) const
 {
     int curveID=0;
-    BOOST_FOREACH ( const PlotCurve& pc, plc_ ) {
+    for ( const PlotCurve& pc: plc_ ) {
         std::string suf=pc.plaintextlabel();
         replace_all ( suf, "/", "_" );
         if ( suf=="" ) {
@@ -1560,7 +1658,7 @@ rapidxml::xml_node<>* Chart::appendToNode
                                   doc.allocate_string ( xlabel_.c_str() )
                               ) );
 
-    BOOST_FOREACH ( const PlotCurve& pc, plc_ ) {
+    for ( const PlotCurve& pc: plc_ ) {
         xml_node<> *pcnode = doc.allocate_node
                              (
                                  node_element,
@@ -1606,6 +1704,114 @@ ResultElementPtr Chart::clone() const
 
 
 
+defineType(PolarChart);
+addToFactoryTable(ResultElement, PolarChart);
+
+
+
+PolarChart::PolarChart(const std::string& shortdesc, const std::string& longdesc, const std::string& unit)
+: Chart(shortdesc, longdesc, unit)
+{}
+
+
+
+PolarChart::PolarChart
+(
+  const std::string& rlabel,
+  const PlotCurveList& plc,
+  const std::string& shortDesc, const std::string& longDesc,
+  double phi_unit,
+  const std::string& addinit
+)
+: Chart("", rlabel, plc, shortDesc, longDesc, addinit),
+  phi_unit_(phi_unit)
+{}
+
+
+void PolarChart::gnuplotCommand(gnuplotio::Gnuplot& gp) const
+{
+ gp<<addinit_<<";";
+ gp<<"unset border;"
+     " set polar;"
+     " set grid polar 60.*pi/180.;"
+     " set trange [0:2.*pi];"
+     " set key rmargin;"
+     " set size square;"
+     " unset xtics;"
+     " unset ytics;"
+     ;
+
+ double rmax=0.;
+ for ( const PlotCurve& pc: plc_ ) {
+  rmax=std::max(rmax, pc.xy().col(1).max());
+ }
+
+ gp<<"set_label(x, text) = sprintf(\"set label '%s' at ("<<rmax<<"*1.05*cos(%f)), ("<<rmax<<"*1.05*sin(%f)) center\", text, x, x);"
+  <<"eval set_label(0, \"$0^\\\\circ$\");"
+ <<"eval set_label(60.*pi/180., \"$60^\\\\circ$\");"
+ <<"eval set_label(120.*pi/180., \"$120^\\\\circ$\");"
+ <<"eval set_label(180.*pi/180., \"$180^\\\\circ$\");"
+ <<"eval set_label(240.*pi/180., \"$240^\\\\circ$\");"
+ <<"eval set_label(300.*pi/180., \"$300^\\\\circ$\");";
+
+ //gp<<"set xlabel '"<<xlabel_<<"'; set ylabel '"<<ylabel_<<"'; ";
+
+ if ( plc_.size() >0 )
+ {
+  gp<<"plot ";
+  bool is_first=true;
+
+  for ( const PlotCurve& pc: plc_ )
+  {
+   if ( !pc.plotcmd_.empty() )
+   {
+
+    if (!is_first)
+    {
+     gp << ",";
+    }
+    else is_first=false;
+
+    if ( pc.xy_.n_rows>0 )
+    {
+     gp<<"'-' "<<pc.plotcmd_;
+    }
+    else
+    {
+     gp<<pc.plotcmd_;
+    }
+
+   }
+  }
+
+  gp<<endl;
+
+  for ( const PlotCurve& pc: plc_ )
+  {
+   if ( pc.xy_.n_rows>0 )
+   {
+    arma::mat xy = pc.xy_;
+    xy.col(0) *= phi_unit_;
+    gp.send1d ( xy );
+   }
+  }
+
+ }
+}
+
+
+
+
+ResultElementPtr PolarChart::clone() const
+{
+    ResultElementPtr res ( new PolarChart ( ylabel_, plc_, shortDescription().simpleLatex(), longDescription().simpleLatex(), phi_unit_, addinit_ ) );
+    res->setOrder ( order() );
+    return res;
+}
+
+
+
+
 PlotField::PlotField()
 {
 }
@@ -1620,7 +1826,7 @@ PlotField::PlotField ( const arma::mat& xy, const std::string& plotcmd )
 
 void addContourPlot
 (
-    boost::shared_ptr<ResultElementCollection> results,
+    std::shared_ptr<ResultElementCollection> results,
     const boost::filesystem::path& workdir,
     const std::string& resultelementname,
     const std::string& xlabel,
@@ -1644,11 +1850,11 @@ void addContourPlot
         gp<<addinit<<";";
         gp<<"set xlabel '"<<xlabel<<"'; set ylabel '"<<ylabel<<"'; set grid; ";
         gp<<"splot ";
-        BOOST_FOREACH ( const PlotCurve& pc, plc ) {
+        for ( const PlotCurve& pc: plc ) {
             gp<<"'-' "<<pc.plotcmd_;
         }
         gp<<endl;
-        BOOST_FOREACH ( const PlotCurve& pc, plc ) {
+        for ( const PlotCurve& pc: plc ) {
             gp.send ( pc.xy_ );
         }
     }

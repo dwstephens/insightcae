@@ -33,6 +33,7 @@
 #include "base/parameterstudy.h"
 #include "base/case.h"
 #include "base/caseelement.h"
+#include "base/linearalgebra.h"
 
 #include "openfoam/openfoamcase.h"
 #include "openfoam/openfoamdict.h"
@@ -41,6 +42,7 @@
 #include "openfoam/openfoamanalysis.h"
 #include "openfoam/blockmesh.h"
 #include "openfoam/blockmesh_templates.h"
+#include "openfoam/remoteexecution.h"
 
 #include "code_aster/caexportfile.h"
 #include "code_aster/codeasterrun.h"
@@ -81,14 +83,16 @@ using namespace insight::bmd;
 %include "base/parameterstudy.h"
 %include "base/case.h"
 %include "base/caseelement.h"
+%include "base/linearalgebra.h"
 
 %include "openfoam/openfoamcase.h"
 %include "openfoam/openfoamdict.h"
 %include "openfoam/openfoamtools.h"
-//%include "openfoam/numericscaseelements.h"
-%include "openfoam/analysiscaseelements.h"
+//%include "openfoam/caseelements/numericscaseelements.h"
+%include "openfoam/caseelements/analysiscaseelements.h"
 %include "openfoam/openfoamanalysis.h"
 //%include "openfoam/blockmesh.h"
+%include "openfoam/remoteexecution.h"
 
 %rename(Cylinder_Parameters) Cylinder::Parameters;
 

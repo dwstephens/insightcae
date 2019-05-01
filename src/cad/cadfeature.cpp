@@ -79,6 +79,9 @@
 #include "TColStd_SequenceOfTransient.hxx"
 #include "TColStd_HSequenceOfTransient.hxx"
 
+#include "BRepBuilderAPI_Copy.hxx"
+
+
 namespace qi = boost::spirit::qi;
 namespace repo = boost::spirit::repository;
 namespace phx   = boost::phoenix;
@@ -113,6 +116,22 @@ std::size_t hash<gp_Pnt>::operator()(const gp_Pnt& v) const
   boost::hash_combine(h, dh(v.X()));
   boost::hash_combine(h, dh(v.Y()));
   boost::hash_combine(h, dh(v.Z()));
+  return h;
+}
+
+
+std::size_t hash<gp_Trsf>::operator()(const gp_Trsf& t) const
+{
+  std::hash<double> dh;
+  size_t h=0;
+  for (int c=1; c<=4; c++)
+  {
+      for (int r=1; r<=3; r++)
+      {
+          boost::hash_combine(h, dh(t.Value(r, c)));
+      }
+  }
+  boost::hash_combine(h, dh(t.ScaleFactor()));
   return h;
 }
 
@@ -226,7 +245,7 @@ int FreelyIndexedMapOfShape::FindIndex (const TopoDS_Shape& K)  const
     if (size()==0) return -1;
     
     int k=-1;
-    BOOST_FOREACH(const value_type& i, *this)
+    for (const value_type& i: *this)
     {
         if (K.IsSame(i.second))
         {
@@ -303,14 +322,17 @@ void Feature::loadShapeFromFile(const boost::filesystem::path& filename)
         STEPControl_Reader reader;
         reader.ReadFile(filename.c_str());
         reader.TransferRoots();
+        cout<<"STEP transferred"<<endl;
 
         TopoDS_Shape res=reader.OneShape();
-        
+        cout<<"=> one shape"<<endl;
+
         // set shape
         setShape(res);
 
         // now detect named features
         //
+        cout<<"detecting names"<<endl;
 
         typedef std::map<std::string, FeatureSetPtr> Feats;
         Feats feats;
@@ -359,7 +381,7 @@ void Feature::loadShapeFromFile(const boost::filesystem::path& filename)
                                     std::string name="face_"+n;
                                     if (feats.find(name)==feats.end())
                                         feats[name].reset(new FeatureSet(shared_from_this(), Face));
-                                    BOOST_FOREACH(const FeatureID& i, ids)
+                                    for (const FeatureID& i: ids)
                                     {
                                         feats[name]->add(i);
                                     }
@@ -386,7 +408,7 @@ void Feature::loadShapeFromFile(const boost::filesystem::path& filename)
                                     std::string name="solid_"+n;
                                     if (feats.find(name)==feats.end())
                                         feats[name].reset(new FeatureSet(shared_from_this(), Solid));
-                                    BOOST_FOREACH(const FeatureID& i, ids)
+                                    for (const FeatureID& i: ids)
                                     {
                                         feats[name]->add(i);
                                     }
@@ -399,7 +421,7 @@ void Feature::loadShapeFromFile(const boost::filesystem::path& filename)
         }
 
 
-        BOOST_FOREACH(Feats::value_type& f, feats)
+        for (Feats::value_type& f: feats)
         {
             providedFeatureSets_[f.first]=f.second;
             providedSubshapes_[f.first].reset(new Feature(f.second));
@@ -428,7 +450,7 @@ size_t Feature::calcShapeHash() const
   boost::hash_combine(hash, boost::hash<int>()(fmap_.size()));
 
   FeatureSetData vset=allVerticesSet();
-  BOOST_FOREACH(const insight::cad::FeatureID& j, vset)
+  for (const insight::cad::FeatureID& j: vset)
   {
     boost::hash_combine
     (
@@ -443,7 +465,7 @@ size_t Feature::calcShapeHash() const
 size_t Feature::calcHash() const
 {
   ParameterListHash h;
-  h+=*creashapes_;
+  if (creashapes_) h+=*creashapes_;
   return h.getHash();
 }
 
@@ -612,7 +634,7 @@ void Feature::build()
   BRep_Builder builder;
   builder.MakeCompound( comp );
 
-  BOOST_FOREACH(const FeatureID& id, creashapes_->data())
+  for (const FeatureID& id: creashapes_->data())
   {
     TopoDS_Shape entity;
     if (creashapes_->shape()==Vertex)
@@ -1075,12 +1097,12 @@ FeatureSetData Feature::query_vertices_subset(const FeatureSetData& fs, FilterPt
   checkForBuildDuringAccess();
   
   f->initialize(shared_from_this());
-  BOOST_FOREACH(int i, fs)
+  for (int i: fs)
   {
     f->firstPass(i);
   }
   FeatureSetData res;
-  BOOST_FOREACH(int i, fs)
+  for (int i: fs)
   {
     if (f->checkMatch(i)) res.insert(i);
   }
@@ -1114,13 +1136,13 @@ FeatureSetData Feature::query_edges_subset(const FeatureSetData& fs, FilterPtr f
   
   f->initialize(shared_from_this());
   //for (int i=1; i<=emap_.Extent(); i++)
-  BOOST_FOREACH(int i, fs)
+  for (int i: fs)
   {
     f->firstPass(i);
   }
   FeatureSetData res;
   //for (int i=1; i<=emap_.Extent(); i++)
-  BOOST_FOREACH(int i, fs)
+  for (int i: fs)
   {
     if (f->checkMatch(i)) res.insert(i);
   }
@@ -1152,12 +1174,12 @@ FeatureSetData Feature::query_faces_subset(const FeatureSetData& fs, FilterPtr f
   checkForBuildDuringAccess();
   
   f->initialize(shared_from_this());
-  BOOST_FOREACH(int i, fs)
+  for (int i: fs)
   {
     f->firstPass(i);
   }
   FeatureSetData res;
-  BOOST_FOREACH(int i, fs)
+  for (int i: fs)
   {
     bool ok=f->checkMatch(i);
     if (ok) std::cout<<"match! ("<<i<<")"<<std::endl;
@@ -1191,12 +1213,12 @@ FeatureSetData Feature::query_solids_subset(const FeatureSetData& fs, FilterPtr 
   checkForBuildDuringAccess();
   
   f->initialize(shared_from_this());
-  BOOST_FOREACH(int i, fs)
+  for (int i: fs)
   {
     f->firstPass(i);
   }
   FeatureSetData res;
-  BOOST_FOREACH(int i, fs)
+  for (int i: fs)
   {
     if (f->checkMatch(i)) res.insert(i);
   }
@@ -1224,7 +1246,7 @@ FeatureSet Feature::verticesOfEdges(const FeatureSet& es) const
 {
   FeatureSet vertices(shared_from_this(), Vertex);
   FeatureSetData fsd;
-  BOOST_FOREACH(FeatureID i, es.data())
+  for (FeatureID i: es.data())
   {
     FeatureSet j=verticesOfEdge(i);
     fsd.insert(j.data().begin(), j.data().end());
@@ -1249,7 +1271,7 @@ FeatureSet Feature::verticesOfFaces(const FeatureSet& fs) const
 {
   FeatureSet vertices(shared_from_this(), Vertex);
   FeatureSetData fsd;
-  BOOST_FOREACH(FeatureID i, fs.data())
+  for (FeatureID i: fs.data())
   {
     FeatureSet j=verticesOfFace(i);
     fsd.insert(j.data().begin(), j.data().end());
@@ -1333,7 +1355,7 @@ void Feature::saveAs
 
    std::vector<boost::fusion::vector2<std::string, FeatureSetPtr> > all_namedfeats = namedfeats;
 
-   BOOST_FOREACH(const FeatureSetPtrMap::value_type& pfs, providedFeatureSets_)
+   for (const FeatureSetPtrMap::value_type& pfs: providedFeatureSets_)
    {
      const std::string& name = pfs.first;
      const FeatureSetPtr& feat = pfs.second;
@@ -1343,14 +1365,14 @@ void Feature::saveAs
        }
    }
 
-   BOOST_FOREACH(const FSM::value_type& fp, all_namedfeats)
+   for (const FSM::value_type& fp: all_namedfeats)
    {
      std::string name = boost::fusion::get<0>(fp); // fp.first;
      const FeatureSetPtr& fs = boost::fusion::get<1>(fp); //fp.second;
      
      if ( fs->shape() == Face )
      {
-       BOOST_FOREACH(const FeatureID& id, fs->data())
+       for (const FeatureID& id: fs->data())
        {
 	 TopoDS_Face aFace = fs->model()->face(id);
 	 Handle_StepRepr_RepresentationItem r = STEPConstruct::FindEntity(FP, aFace);
@@ -1386,7 +1408,7 @@ void Feature::saveAs
    }
    
    // edit STEP header
-   APIHeaderSection_MakeHeader makeHeader(writer.Writer().Model());
+   APIHeaderSection_MakeHeader makeHeader(writer.ChangeWriter().Model());
 
    Handle_TCollection_HAsciiString headerFileName = new TCollection_HAsciiString(filename.stem().c_str());
 //    Handle(TCollection_HAsciiString) headerAuthor      = new TCollection_HAsciiString("silentdynamics GmbH");
@@ -1430,22 +1452,23 @@ void Feature::saveAs
 
 void Feature::exportSTL(const boost::filesystem::path& filename, double abstol, bool binary) const
 {
-  TopoDS_Shape os=shape();
-  
-  ShapeFix_ShapeTolerance sf;
-  sf.SetTolerance(os, abstol);
-  
-  BRepMesh_IncrementalMesh binc(os, abstol);
-  
-  StlAPI_Writer stlwriter;
+  BRepBuilderAPI_Copy aCopy( shape(), Standard_False );
+  TopoDS_Shape os=aCopy.Shape();
 
+  StlAPI_Writer stlwriter;
   stlwriter.ASCIIMode() = !binary; //false;
+
 #if ((OCC_VERSION_MAJOR<7)&&(OCC_VERSION_MINOR<9))
-#warning control STL tolerance in newer OCC versions!
   stlwriter.RelativeMode()=false;
   stlwriter.SetDeflection(abstol);
+#else
+  BRepTools::Clean( os );
+//  ShapeFix_ShapeTolerance sf;
+//  sf.SetTolerance(os, abstol);
+  BRepMesh_IncrementalMesh binc(os, abstol);
 #endif
-  stlwriter.Write(shape(), filename.c_str());
+
+  stlwriter.Write(os, filename.c_str());
 }
 
 
@@ -1464,7 +1487,7 @@ void Feature::exportEMesh
   typedef std::pair<int, int> Edge;
   std::vector<Edge> edges;
   
-  BOOST_FOREACH(const FeatureID& fi, fs.data())
+  for (const FeatureID& fi: fs.data())
   {
     
     TopoDS_Edge e=fs.model()->edge(fi);
@@ -1524,7 +1547,7 @@ void Feature::exportEMesh
    
   f<<points.size()<<endl
    <<"("<<endl;
-  BOOST_FOREACH(const arma::mat& p, points)
+  for (const arma::mat& p: points)
   {
     f<<OFDictData::to_OF(p)<<endl;
   }
@@ -1532,7 +1555,7 @@ void Feature::exportEMesh
 
   f<<edges.size()<<endl
    <<"("<<endl;
-  BOOST_FOREACH(const Edge& e, edges)
+  for (const Edge& e: edges)
   {
     f<<"("<<e.first<<" "<<e.second<<")"<<endl;
   }
@@ -1566,6 +1589,12 @@ const TopoDS_Shape& Feature::shape() const
     BRepMesh_IncrementalMesh aMesher(shape_, visresolution_->value());
   }
   return shape_;
+}
+
+
+Handle_AIS_InteractiveObject Feature::buildVisualization() const
+{
+    return Handle_AIS_InteractiveObject( new AIS_Shape(shape()) );
 }
 
 
@@ -1606,7 +1635,7 @@ Feature::View Feature::createView
         TopoDS_Shape HalfSpace = BRepPrimAPI_MakeHalfSpace(Face,refPnt).Solid();
 
         TopoDS_Compound dispshapes;
-        boost::shared_ptr<TopTools_ListOfShape> xsecs(new TopTools_ListOfShape);
+        std::shared_ptr<TopTools_ListOfShape> xsecs(new TopTools_ListOfShape);
         BRep_Builder builder1;
         builder1.MakeCompound( dispshapes );
         int i=-1, j=0;
@@ -1852,7 +1881,7 @@ TopoDS_Shape Feature::asSingleVolume() const
 void Feature::copyDatums(const Feature& m1, const std::string& prefix, std::set<std::string> excludes)
 {
     // Transform all ref points and ref vectors
-    BOOST_FOREACH(const RefValuesList::value_type& v, m1.getDatumScalars())
+    for (const RefValuesList::value_type& v: m1.getDatumScalars())
     {
         if (excludes.find(v.first)==excludes.end())
         {
@@ -1861,7 +1890,7 @@ void Feature::copyDatums(const Feature& m1, const std::string& prefix, std::set<
             refvalues_[prefix+v.first]=v.second;
         }
     }
-    BOOST_FOREACH(const RefPointsList::value_type& p, m1.getDatumPoints())
+    for (const RefPointsList::value_type& p: m1.getDatumPoints())
     {
         if (excludes.find(p.first)==excludes.end())
         {
@@ -1870,7 +1899,7 @@ void Feature::copyDatums(const Feature& m1, const std::string& prefix, std::set<
             refpoints_[prefix+p.first]=p.second;
         }
     }
-    BOOST_FOREACH(const RefVectorsList::value_type& p, m1.getDatumVectors())
+    for (const RefVectorsList::value_type& p: m1.getDatumVectors())
     {
         if (excludes.find(p.first)==excludes.end())
         {
@@ -1879,7 +1908,7 @@ void Feature::copyDatums(const Feature& m1, const std::string& prefix, std::set<
             refvectors_[prefix+p.first]=p.second;
         }
     }
-    BOOST_FOREACH(const SubfeatureMap::value_type& sf, m1.providedSubshapes())
+    for (const SubfeatureMap::value_type& sf: m1.providedSubshapes())
     {
         if (excludes.find(sf.first)==excludes.end())
         {
@@ -1888,7 +1917,7 @@ void Feature::copyDatums(const Feature& m1, const std::string& prefix, std::set<
             providedSubshapes_[prefix+sf.first]=sf.second;
         }
     }
-    BOOST_FOREACH(const DatumPtrMap::value_type& df, m1.providedDatums())
+    for (const DatumPtrMap::value_type& df: m1.providedDatums())
     {
         if (excludes.find(df.first)==excludes.end())
         {
@@ -1906,7 +1935,7 @@ void Feature::copyDatums(const Feature& m1, const std::string& prefix, std::set<
 void Feature::copyDatumsTransformed(const Feature& m1, const gp_Trsf& trsf, const std::string& prefix, std::set<std::string> excludes)
 {
     // Transform all ref points and ref vectors
-    BOOST_FOREACH(const RefValuesList::value_type& v, m1.getDatumScalars())
+    for (const RefValuesList::value_type& v: m1.getDatumScalars())
     {
         if (excludes.find(v.first)==excludes.end())
         {
@@ -1915,7 +1944,7 @@ void Feature::copyDatumsTransformed(const Feature& m1, const gp_Trsf& trsf, cons
             refvalues_[prefix+v.first]=v.second;
         }
     }
-    BOOST_FOREACH(const RefPointsList::value_type& p, m1.getDatumPoints())
+    for (const RefPointsList::value_type& p: m1.getDatumPoints())
     {
         if (excludes.find(p.first)==excludes.end())
         {
@@ -1924,7 +1953,7 @@ void Feature::copyDatumsTransformed(const Feature& m1, const gp_Trsf& trsf, cons
             refpoints_[prefix+p.first]=vec3(to_Pnt(p.second).Transformed(trsf));
         }
     }
-    BOOST_FOREACH(const RefVectorsList::value_type& p, m1.getDatumVectors())
+    for (const RefVectorsList::value_type& p: m1.getDatumVectors())
     {
         if (excludes.find(p.first)==excludes.end())
         {
@@ -1933,7 +1962,7 @@ void Feature::copyDatumsTransformed(const Feature& m1, const gp_Trsf& trsf, cons
             refvectors_[prefix+p.first]=vec3(to_Vec(p.second).Transformed(trsf));
         }
     }
-    BOOST_FOREACH(const SubfeatureMap::value_type& sf, m1.providedSubshapes())
+    for (const SubfeatureMap::value_type& sf: m1.providedSubshapes())
     {
         if (excludes.find(sf.first)==excludes.end())
         {
@@ -1942,7 +1971,7 @@ void Feature::copyDatumsTransformed(const Feature& m1, const gp_Trsf& trsf, cons
             providedSubshapes_[prefix+sf.first]=FeaturePtr(new Transform(sf.second, trsf));
         }
     }
-    BOOST_FOREACH(const DatumPtrMap::value_type& df, m1.providedDatums())
+    for (const DatumPtrMap::value_type& df: m1.providedDatums())
     {
         if (excludes.find(df.first)==excludes.end())
         {
@@ -1985,7 +2014,7 @@ double Feature::getDatumScalar(const std::string& name) const
   else
   {
     std::ostringstream av;
-    BOOST_FOREACH(const RefValuesList::value_type& i, refvalues_)
+    for (const RefValuesList::value_type& i: refvalues_)
     {
       av<<" "<<i.first;
     }
@@ -2005,7 +2034,7 @@ arma::mat Feature::getDatumPoint(const std::string& name) const
   else
   {
     std::ostringstream av;
-    BOOST_FOREACH(const RefPointsList::value_type& i, refpoints_)
+    for (const RefPointsList::value_type& i: refpoints_)
     {
       av<<" "<<i.first;
     }
@@ -2025,7 +2054,7 @@ arma::mat Feature::getDatumVector(const std::string& name) const
   else
   {
     std::ostringstream av;
-    BOOST_FOREACH(const RefVectorsList::value_type& i, refvectors_)
+    for (const RefVectorsList::value_type& i: refvectors_)
     {
       av<<" "<<i.first;
     }
@@ -2311,7 +2340,7 @@ void Feature::extractReferenceFeatures()
   /////////////// save reference points
 
 //   for (int i=1; i<=vmap_.Extent(); i++)
-  BOOST_FOREACH(const FreelyIndexedMapOfShape::value_type& i, vmap_)
+  for (const FreelyIndexedMapOfShape::value_type& i: vmap_)
   {
     refpoints_[ str(format("v%d")%i.first) ] = vertexLocation(i.first);
   }
@@ -2338,43 +2367,24 @@ void Feature::write(std::ostream& f) const
     f<<buf<<endl;
   }
 
-//   nameFeatures();
-
-//   f<<providedSubshapes_.size()<<endl;
-//   BOOST_FOREACH(const Feature::Map::value_type& i, providedSubshapes_)
-//   {
-//     f<<i.first<<endl;
-//     i.second->write(f);
-//     f<<endl;
-//   }
-
-//   typedef std::map<std::string, boost::shared_ptr<Datum> > DatumMap;
-//   f<<providedDatums_.size()<<endl;
-//   BOOST_FOREACH(const DatumMap::value_type& i, providedDatums_)
-//   {
-//     f<<i.first<<endl;
-//     i.second->write(f);
-//     f<<endl;
-//   }
-
 
 //   RefValuesList refvalues_;
   f<<refvalues_.size()<<endl;
-  BOOST_FOREACH(const RefValuesList::value_type& i, refvalues_)
+  for (const RefValuesList::value_type& i: refvalues_)
   {
     f<<i.first<<endl;
     f<<i.second<<endl;
   }
 //   RefPointsList refpoints_;
   f<<refpoints_.size()<<endl;
-  BOOST_FOREACH(const RefPointsList::value_type& i, refpoints_)
+  for (const RefPointsList::value_type& i: refpoints_)
   {
     f<<i.first<<endl;
     f<<i.second(0)<<" "<<i.second(1)<<" "<<i.second(2)<<endl;
   }
 //   RefVectorsList refvectors_;
   f<<refvectors_.size()<<endl;
-  BOOST_FOREACH(const RefVectorsList::value_type& i, refvectors_)
+  for (const RefVectorsList::value_type& i: refvectors_)
   {
     f<<i.first<<endl;
     f<<i.second(0)<<" "<<i.second(1)<<" "<<i.second(2)<<endl;
@@ -2402,7 +2412,7 @@ gp_Trsf Feature::transformation() const
   return gp_Trsf();
 }
 
-Mass_CoG_Inertia compoundProps(const std::vector<boost::shared_ptr<Feature> >& feats, double density_ovr, double aw_ovr)
+Mass_CoG_Inertia compoundProps(const std::vector<std::shared_ptr<Feature> >& feats, double density_ovr, double aw_ovr)
 {
   double m=0.0;
   arma::mat cog=vec3(0,0,0);
@@ -2410,8 +2420,8 @@ Mass_CoG_Inertia compoundProps(const std::vector<boost::shared_ptr<Feature> >& f
   double mcs[feats.size()];
   arma::mat cogs[feats.size()];
   
-  int i;
-  i=-1; BOOST_FOREACH(const FeaturePtr& f, feats)
+  int i=-1;
+  for (const FeaturePtr& f: feats)
   { i++;
     
 //     std::cout<<density_ovr<<", "<<aw_ovr<<std::endl;
@@ -2425,7 +2435,8 @@ Mass_CoG_Inertia compoundProps(const std::vector<boost::shared_ptr<Feature> >& f
   cog/=m;
   
   arma::mat inertia=arma::zeros(3,3);
-  i=-1; BOOST_FOREACH(const FeaturePtr& f, feats)
+  i=-1;
+  for (const FeaturePtr& f: feats)
   { i++;
     arma::mat d = cogs[i] - cog;
     arma::mat dt=arma::zeros(3,3);
@@ -2483,24 +2494,6 @@ void Feature::read(std::istream& f)
     setShape(sh);
   }
 
-//   f<<providedSubshapes_.size()<<endl;
-//   BOOST_FOREACH(const Feature::Map::value_type& i, providedSubshapes_)
-//   {
-//     f<<i.first<<endl;
-//     i.second->write(f);
-//     f<<endl;
-//   }
-
-//   typedef std::map<std::string, boost::shared_ptr<Datum> > DatumMap;
-//   int n;
-// 
-//   f>>n;
-//   for (int i=0; i<n; i++)
-//   {
-//     std::string name;
-//     getline(f, name);
-//     providedDatums_[name].reset(new Datum(f));
-//   }
 
 
 //   RefValuesList refvalues_;

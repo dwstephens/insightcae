@@ -37,6 +37,10 @@
 #include <vector>
 #include <iostream>
 
+class QoccViewWidget;
+class QModelTree;
+
+
 namespace insight {
   
   
@@ -48,7 +52,7 @@ class ParameterSet
 {
 
 public:
-  typedef boost::shared_ptr<ParameterSet> Ptr;
+  typedef std::shared_ptr<ParameterSet> Ptr;
   typedef boost::tuple<std::string, Parameter*> SingleEntry;
   typedef std::vector< boost::tuple<std::string, Parameter*> > EntryList;
 
@@ -226,7 +230,7 @@ public:
         std::string prefix = copy_range<std::string> ( *make_split_iterator ( key, first_finder ( "/" ) ) );
         std::string remain = key;
         erase_head ( remain, prefix.size()+1 );
-        std::cout<<prefix<<" >> "<<remain<<std::endl;
+//        std::cout<<prefix<<" >> "<<remain<<std::endl;
         return this->getSubset ( prefix ).replace ( remain, newp );
       }
     else
@@ -243,6 +247,7 @@ public:
 
 
   virtual std::string latexRepresentation() const;
+  virtual std::string plainTextRepresentation(int indent=0) const;
 
   virtual ParameterSet* cloneParameterSet() const;
 
@@ -251,15 +256,22 @@ public:
   virtual void readFromNode ( rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node,
                               boost::filesystem::path inputfilepath );
 
-  virtual void saveToFile ( const boost::filesystem::path& file, std::string analysisType = std::string() ) const;
+
+  void packExternalFiles();
+
+  virtual void saveToStream(std::ostream& os, const boost::filesystem::path& parentPath, std::string analysisName = std::string() ) const;
+  void saveToFile ( const boost::filesystem::path& file, std::string analysisType = std::string() ) const;
   virtual std::string readFromFile ( const boost::filesystem::path& file );
 
 };
 
 
+#ifndef SWIG
+std::ostream& operator<<(std::ostream& os, const ParameterSet& ps);
+#endif
 
 
-typedef boost::shared_ptr<ParameterSet> ParameterSetPtr;
+typedef std::shared_ptr<ParameterSet> ParameterSetPtr;
 
 #define PSINT(p, subdict, key) int key = p[subdict].getInt(#key);
 #define PSDBL(p, subdict, key) double key = p[subdict].getDouble(#key);
@@ -272,21 +284,21 @@ typedef boost::shared_ptr<ParameterSet> ParameterSetPtr;
 
 class SubsetParameter
   : public Parameter,
-    public ParameterSet //boost::shared_ptr<ParameterSet>
+    public ParameterSet //std::shared_ptr<ParameterSet>
 {
 public:
-  typedef boost::shared_ptr<SubsetParameter> Ptr;
+  typedef std::shared_ptr<SubsetParameter> Ptr;
   typedef ParameterSet value_type;
 
 // protected:
-//   boost::shared_ptr<ParameterSet> value_;
+//   std::shared_ptr<ParameterSet> value_;
 
 public:
   declareType ( "subset" );
 
   SubsetParameter();
-  SubsetParameter ( const std::string& description );
-  SubsetParameter ( const ParameterSet& defaultValue, const std::string& description );
+  SubsetParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
+  SubsetParameter ( const ParameterSet& defaultValue, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
 
   inline void setParameterSet ( const ParameterSet& paramset )
   {
@@ -304,6 +316,11 @@ public:
   }
 
   virtual std::string latexRepresentation() const;
+  virtual std::string plainTextRepresentation(int indent=0) const;
+
+  virtual bool isPacked() const;
+  virtual void pack();
+  virtual void unpack();
 
   virtual Parameter* clone () const;
 
@@ -334,14 +351,14 @@ protected:
 public:
   declareType ( "selectableSubset" );
 
-  SelectableSubsetParameter ( const std::string& description );
+  SelectableSubsetParameter ( const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
   /**
    * Construct from components:
    * \param defaultSelection The key of the subset which is selected per default
    * \param defaultValue A map of key-subset pairs. Between these can be selected
    * \param description The description of the selection parameter
    */
-  SelectableSubsetParameter ( const key_type& defaultSelection, const SubsetList& defaultValue, const std::string& description );
+  SelectableSubsetParameter ( const key_type& defaultSelection, const SubsetList& defaultValue, const std::string& description,  bool isHidden=false, bool isExpert=false, bool isNecessary=false, int order=0 );
 
   inline key_type& selection()
   {
@@ -353,10 +370,16 @@ public:
     return selection_;
   }
   
-  inline const ItemList& items()
+  inline const ItemList& items() const
   {
     return value_;
   }
+
+  inline ItemList& items()
+  {
+    return value_;
+  }
+
   void addItem ( key_type key, const ParameterSet& ps );
   
   inline ParameterSet& operator() ()
@@ -372,6 +395,11 @@ public:
   void setSelection(const key_type& key, const ParameterSet& ps);
 
   virtual std::string latexRepresentation() const;
+  virtual std::string plainTextRepresentation(int indent=0) const;
+
+  virtual bool isPacked() const;
+  virtual void pack();
+  virtual void unpack();
 
   virtual Parameter* clone () const;
 
@@ -479,6 +507,66 @@ ParameterSet& ParameterSet::setSelectableSubset(const std::string& key, const ty
       }
   }
 
+
+
+
+  class ParameterSet_Validator
+  {
+  public:
+      typedef std::map<std::string, std::string> WarningList;
+      typedef std::map<std::string, std::string> ErrorList;
+
+  protected:
+      ParameterSet ps_;
+
+
+      WarningList warnings_;
+      ErrorList errors_;
+
+  public:
+      virtual ~ParameterSet_Validator();
+
+      /**
+       * @brief update
+       * @param ps
+       * checks a parameter set (needs to be customized by derivation for that)
+       * Stores a copy of the parameter set and updates the warnings and errors list.
+       * Needs to be called first in derived classes.
+       */
+      virtual void update(const ParameterSet& ps);
+
+      virtual bool isValid() const;
+      virtual const WarningList& warnings() const;
+      virtual const ErrorList& errors() const;
+  };
+
+
+  typedef std::shared_ptr<ParameterSet_Validator> ParameterSet_ValidatorPtr;
+
+
+
+
+
+
+  class ParameterSet_Visualizer
+  {
+  protected:
+      ParameterSet ps_;
+
+  public:
+      virtual ~ParameterSet_Visualizer();
+
+      /**
+       * @brief update
+       * @param ps
+       * computes visualization features (from insight::cad) for several parameters.
+       */
+      virtual void update(const ParameterSet& ps);
+
+      virtual void updateVisualizationElements(QoccViewWidget*, QModelTree*);
+  };
+
+  typedef std::shared_ptr<ParameterSet_Visualizer> ParameterSet_VisualizerPtr;
 
 }
 

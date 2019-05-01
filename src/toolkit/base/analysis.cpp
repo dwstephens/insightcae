@@ -64,8 +64,8 @@ void CombinedProgressDisplayer::add ( ProgressDisplayer* d )
 
 void CombinedProgressDisplayer::update ( const ProgressState& pi )
 {
-    int j=0;
-    BOOST_FOREACH ( ProgressDisplayer* d, displayers_ ) {
+//    int j=0;
+    for ( ProgressDisplayer* d: displayers_ ) {
 //     std::cout<<"exec #"<<(j++)<<std::endl;
         d->update ( pi );
     }
@@ -80,7 +80,7 @@ bool CombinedProgressDisplayer::stopRun() const
         stop=true;
     }
 
-    BOOST_FOREACH ( const ProgressDisplayer* d, displayers_ ) {
+    for ( const ProgressDisplayer* d: displayers_ ) {
         if ( op_==AND ) {
             stop = stop && d->stopRun();
         } else if ( op_==OR ) {
@@ -95,10 +95,10 @@ bool CombinedProgressDisplayer::stopRun() const
 
 void TextProgressDisplayer::update ( const ProgressState& pi )
 {
-    double iter=pi.first;
+//    double iter=pi.first;
     const ProgressVariableList& pvl=pi.second;
 
-    BOOST_FOREACH ( const ProgressVariableList::value_type& i, pvl ) {
+    for ( const ProgressVariableList::value_type& i: pvl ) {
         const std::string& name = i.first;
         double value = i.second;
 
@@ -177,13 +177,28 @@ defineFactoryTable
   ),
   LIST(ps, exePath)
 );
+
 defineStaticFunctionTable(Analysis, defaultParameters, ParameterSet);
 defineStaticFunctionTable(Analysis, category, std::string);
+defineStaticFunctionTable(Analysis, validator, ParameterSet_ValidatorPtr);
+defineStaticFunctionTable(Analysis, visualizer, ParameterSet_VisualizerPtr);
+
 
 std::string Analysis::category()
 {
     return "Uncategorized";
 }
+
+ParameterSet_ValidatorPtr Analysis::validator()
+{
+    return ParameterSet_ValidatorPtr();
+}
+
+ParameterSet_VisualizerPtr Analysis::visualizer()
+{
+    return ParameterSet_VisualizerPtr();
+}
+
 
 void Analysis::extendSharedSearchPath ( const std::string& name )
 {
@@ -289,7 +304,7 @@ CollectingProgressDisplayer::CollectingProgressDisplayer ( const std::string& id
 void CollectingProgressDisplayer::update ( const ProgressState& pi )
 {
     double maxv=-1e10;
-    BOOST_FOREACH ( const ProgressVariableList::value_type v, pi.second ) {
+    for ( const ProgressVariableList::value_type v: pi.second ) {
         if ( v.second > maxv ) {
             maxv=v.second;
         }
@@ -373,34 +388,44 @@ AnalysisLibraryLoader::AnalysisLibraryLoader()
 {
 
     SharedPathList paths;
-    BOOST_FOREACH ( const path& p, /*SharedPathList::searchPathList*/paths ) {
-        if ( exists(p) && is_directory ( p ) ) {
+    for ( const path& p: /*SharedPathList::searchPathList*/paths )
+    {
+        if ( exists(p) && is_directory ( p ) )
+        {
             path userconfigdir ( p );
             userconfigdir /= "modules.d";
 
-            if ( exists(userconfigdir) ) { if ( is_directory ( userconfigdir ) ) {
+            if ( exists(userconfigdir) )
+            {
+              if ( is_directory ( userconfigdir ) )
+              {
                 directory_iterator end_itr; // default construction yields past-the-end
                 for ( directory_iterator itr ( userconfigdir );
                         itr != end_itr;
-                        ++itr ) {
-                    if ( is_regular_file ( itr->status() ) ) {
-                        if ( itr->path().extension() == ".module" ) {
+                        ++itr )
+                {
+                    if ( is_regular_file ( itr->status() ) )
+                    {
+                        if ( itr->path().extension() == ".module" )
+                        {
                             std::ifstream f ( itr->path().c_str() );
                             std::string type;
                             path location;
                             f>>type>>location;
                             //cout<<itr->path()<<": type="<<type<<" location="<<location<<endl;
 
-                            if ( type=="library" ) {
+                            if ( type=="library" )
+                            {
                                 addLibrary(location);
                             }
-
                         }
                     }
                 }
-            }}
-
-        } else {
+              }
+            }
+        }
+        else
+        {
             //cout<<"Not existing: "<<p<<endl;
         }
     }
@@ -408,7 +433,7 @@ AnalysisLibraryLoader::AnalysisLibraryLoader()
 
 AnalysisLibraryLoader::~AnalysisLibraryLoader()
 {
-    BOOST_FOREACH ( void *handle, handles_ ) {
+    for ( void *handle: handles_ ) {
         //dlclose(handle);
     }
 }
@@ -418,11 +443,11 @@ void AnalysisLibraryLoader::addLibrary(const boost::filesystem::path& location)
     void *handle = dlopen ( location.c_str(), RTLD_NOW|RTLD_GLOBAL /*RTLD_LAZY|RTLD_NODELETE*/ );
     if ( !handle ) 
     {
-        std::cout<<"Could not load module library "<<location<<": " << dlerror() << std::endl;
+        std::cerr<<"Could not load module library "<<location<<": " << dlerror() << std::endl;
     } else 
     {
+//        std::cout<<"Loaded module library "<<location << std::endl;
         handles_.push_back ( handle );
-//                                     std::cout<<itr->path() <<": Loaded module library "<<location << std::endl;
     }
 }
 

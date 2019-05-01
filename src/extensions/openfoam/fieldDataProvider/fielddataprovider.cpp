@@ -33,11 +33,6 @@
 #endif
 #include "boost/filesystem.hpp"
 
-#if defined(OFplus)||defined(OFdev)
-#define ACCESSTMP(x) (x).ref()
-#else
-#define ACCESSTMP(x) (x)()
-#endif
 
 using namespace boost;
 using namespace insight;
@@ -207,7 +202,8 @@ void FieldDataProvider<T>::write(Ostream& os) const
   
   if (timeInstants_.size()==1)
   {
-    //os << "steady" << token::SPACE;
+    os << "steady" << token::SPACE;
+
     writeInstant(0, os);
   }
   else
@@ -235,7 +231,24 @@ void FieldDataProvider<T>::writeEntry(const word& key, Ostream& os) const
   os<<token::END_STATEMENT<<nl;
 }
 
+template<class T>
+void FieldDataProvider<T>::autoMap
+(
+    const fvPatchFieldMapper&
+)
+{
+}
 
+
+//- Reverse map the given fvPatchField onto this fvPatchField
+template<class T>
+void FieldDataProvider<T>::rmap
+(
+    const FieldDataProvider<T>&,
+    const labelList&
+)
+{
+}
 
 
 template<class T>  
@@ -262,7 +275,7 @@ template<class T>
 tmp<Field<T> > uniformField<T>::atInstant(int i, const pointField& target) const
 {
   tmp<Field<T> > res(new Field<T>(target.size()));
-  ACCESSTMP(res)=values_[i];
+  UNIOF_TMP_NONCONST(res)=values_[i];
   return res;
 }
 
@@ -273,6 +286,16 @@ uniformField<T>::uniformField(const uniformField<T>& o)
 {
 }
 
+template<class T>
+uniformField<T>::uniformField(const T& uv)
+    : FieldDataProvider<T> ()
+{
+    FieldDataProvider<T>::timeInstants_.resize(1);
+    FieldDataProvider<T>::timeInstants_[0]=0;
+
+    values_.clear();
+    values_.push_back(new T(uv));
+}
 
 template<class T>
 autoPtr<FieldDataProvider<T> > uniformField<T>::clone() const
@@ -292,7 +315,13 @@ void nonuniformField<T>::appendInstant(Istream& is)
 template<class T>
 void nonuniformField<T>::writeInstant(int i, Ostream& os) const
 {
-  values_[i].UList<T>::writeEntry(os);
+  values_[i].UList<T>::
+        #if defined(OFesi1806)
+          writeList
+        #else
+          writeEntry
+        #endif
+          (os);
 }
 
   
@@ -333,6 +362,41 @@ autoPtr<FieldDataProvider<T> > nonuniformField<T>::clone() const
   return autoPtr<FieldDataProvider<T> >(new nonuniformField<T>(*this));
 }
 
+template<class T>
+void nonuniformField<T>::autoMap
+(
+    const fvPatchFieldMapper& m
+)
+{
+    for (size_t i=0; i<values_.size(); i++)
+    {
+        values_[i].autoMap(m);
+    }
+}
+
+
+//- Reverse map the given fvPatchField onto this fvPatchField
+template<class T>
+void nonuniformField<T>::rmap
+(
+    const FieldDataProvider<T>& o,
+    const labelList& m
+)
+{
+    const nonuniformField<T>* oo = dynamic_cast<const nonuniformField<T>* >(&o);
+    if (oo->values_.size() != values_.size())
+        FatalErrorIn("nonuniformField<T>::rmap")
+                << "Incompatible number of time instants!"
+                   <<" other: "<<label(oo->values_.size())
+                   <<" current: "<<label(values_.size())
+                  <<endl
+                <<abort(FatalError);
+
+    for (size_t i=0; i<values_.size(); i++)
+    {
+        values_[i].rmap( oo->values_[i], m );
+    }
+}
 
 
 template<class T>  
@@ -374,7 +438,7 @@ tmp<Field<T> > linearProfile<T>::atInstant(int idx, const pointField& target) co
   }
   
   tmp<Field<T> > resPtr(new Field<T>(target.size(), pTraits<T>::zero));
-  Field<T>& res=ACCESSTMP(resPtr);
+  Field<T>& res=UNIOF_TMP_NONCONST(resPtr);
 
 //   vector ey = - (ex_ ^ ez_);
 //   tensor tt(ex_, ey, ez_);
@@ -478,7 +542,7 @@ tmp<Field<T> > radialProfile<T>::atInstant(int idx, const pointField& target) co
   }
 
   tmp<Field<T> > resPtr(new Field<T>(target.size(), pTraits<T>::zero));
-  Field<T>& res=ACCESSTMP(resPtr);
+  Field<T>& res=UNIOF_TMP_NONCONST(resPtr);
   
 
   forAll(target, pi)
@@ -592,7 +656,7 @@ template<class T>
 tmp<Field<T> > fittedProfile<T>::atInstant(int idx, const pointField& target) const
 {
   tmp<Field<T> > resPtr(new Field<T>(target.size(), pTraits<T>::zero));
-  Field<T>& res=ACCESSTMP(resPtr);  
+  Field<T>& res=UNIOF_TMP_NONCONST(resPtr);
 
   forAll(target, pi)
   {

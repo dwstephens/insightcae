@@ -639,23 +639,13 @@ void PipeCyclic::createCase
 )
 {  
   const ParameterSet& p=parameters_;
-  // create local variables from ParameterSet
-  PSDBL(p, "geometry", D);
-  PSDBL(p, "geometry", L);
-  PSDBL(p, "operation", Re_tau);
-  PSINT(p, "fluid", turbulenceModel);
-  
-  PSDBL(p, "evaluation", inittime);
-  PSDBL(p, "evaluation", meantime);
   
   path dir = executionPath();
 
   OFDictData::dict boundaryDict;
   cm.parseBoundaryDict(dir, boundaryDict);
 
-  cm.insert(new pimpleFoamNumerics(cm, pimpleFoamNumerics::Parameters()
-        .set_hasCyclics(true)
-  ));
+  cm.insert(new pimpleFoamNumerics(cm, pimpleFoamNumerics::Parameters() ));
       
   cm.insert(new CyclicPairBC(cm, cyclPrefix(), boundaryDict));
   
@@ -683,7 +673,7 @@ void PipeCyclic::applyCustomPreprocessing(OpenFOAMCase& cm)
   OpenFOAMAnalysis::applyCustomPreprocessing(cm);
 }
 
-void PipeCyclic::applyCustomOptions(OpenFOAMCase& cm, boost::shared_ptr<OFdicts>& dicts)
+void PipeCyclic::applyCustomOptions(OpenFOAMCase& cm, std::shared_ptr<OFdicts>& dicts)
 {
   const ParameterSet& p=parameters_;
   PSDBL(p, "evaluation", inittime);
@@ -771,8 +761,8 @@ void PipeInflow::createCase
   // create local variables from ParameterSet
   PSDBL(p, "geometry", D);
   PSDBL(p, "geometry", L);
-  PSDBL(p, "operation", Re_tau);
-  PSINT(p, "fluid", turbulenceModel);
+//  PSDBL(p, "operation", Re_tau);
+//  PSINT(p, "fluid", turbulenceModel);
   
   PSDBL(p, "evaluation", inittime);
   PSDBL(p, "evaluation", meantime);
@@ -788,9 +778,12 @@ void PipeInflow::createCase
   cm.insert(new TurbulentVelocityInletBC( cm, cycl_in_, boundaryDict, p.getSubset("inflow") ));
   
   cm.insert(new PressureOutletBC(cm, cycl_out_, boundaryDict, PressureOutletBC::Parameters()
-    .set_pressure(0.0)
-    .set_behaviour(PressureOutletBC::Parameters::behaviour_fixMeanValue_type())
-  ));
+//    .set_pressure(0.0)
+//    .set_behaviour(PressureOutletBC::Parameters::behaviour_fixMeanValue_type())
+     .set_behaviour(PressureOutletBC::Parameters::behaviour_fixMeanValue_type(
+                    0.0
+                    ))
+     ));
   
   PipeBase::createCase(cm);
   
@@ -943,7 +936,7 @@ void PipeInflow::applyCustomPreprocessing(OpenFOAMCase& cm)
   OpenFOAMAnalysis::applyCustomPreprocessing(cm);
 }
 
-void PipeInflow::applyCustomOptions(OpenFOAMCase& cm, boost::shared_ptr<OFdicts>& dicts)
+void PipeInflow::applyCustomOptions(OpenFOAMCase& cm, std::shared_ptr<OFdicts>& dicts)
 {
   const ParameterSet& p=parameters_;
   PSDBL(p, "evaluation", inittime);

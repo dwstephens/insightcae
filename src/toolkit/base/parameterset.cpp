@@ -57,7 +57,7 @@ ParameterSet::~ParameterSet()
 ParameterSet::EntryList ParameterSet::entries() const
 {
   EntryList alle;
-  BOOST_FOREACH( const_iterator::value_type e, *this)
+  for ( const_iterator::value_type e: *this)
   {
     alle.push_back(SingleEntry(e->first, e->second->clone()));
   }
@@ -66,7 +66,7 @@ ParameterSet::EntryList ParameterSet::entries() const
 
 void ParameterSet::extend(const EntryList& entries)
 {
-  BOOST_FOREACH( const ParameterSet::SingleEntry& i, entries )
+  for ( const ParameterSet::SingleEntry& i: entries )
   {
     std::string key(boost::get<0>(i));
     SubsetParameter *p = dynamic_cast<SubsetParameter*>( boost::get<1>(i) );
@@ -89,7 +89,7 @@ void ParameterSet::extend(const EntryList& entries)
 ParameterSet& ParameterSet::merge(const ParameterSet& p)
 {
   EntryList entries=p.entries();
-  BOOST_FOREACH( const ParameterSet::SingleEntry& i, entries )
+  for ( const ParameterSet::SingleEntry& i: entries )
   {
     std::string key(boost::get<0>(i));
     SubsetParameter *p = dynamic_cast<SubsetParameter*>( boost::get<1>(i) );
@@ -172,6 +172,20 @@ std::string ParameterSet::latexRepresentation() const
   return result;
 }
 
+std::string ParameterSet::plainTextRepresentation(int indent) const
+{
+    std::string result="";
+    if (size()>0)
+    {
+      for(const_iterator i=begin(); i!=end(); i++)
+      {
+        result+=std::string(indent, ' ') + (i->first) + " = " + i->second->plainTextRepresentation(indent) + '\n';
+      }
+    }
+    return result;
+}
+
+
 ParameterSet* ParameterSet::cloneParameterSet() const
 {
   ParameterSet *np=new ParameterSet;
@@ -201,40 +215,55 @@ void ParameterSet::readFromNode(rapidxml::xml_document<>& doc, rapidxml::xml_nod
   }
 }
 
-void ParameterSet::saveToFile(const boost::filesystem::path& file, std::string analysisName ) const
+
+void ParameterSet::packExternalFiles()
+{
+  for (auto p: *this)
+  {
+    p->second->pack();
+  }
+}
+
+
+void ParameterSet::saveToStream(std::ostream& os, const boost::filesystem::path& parent_path, std::string analysisName ) const
 {
 //   std::cout<<"Writing parameterset to file "<<file<<std::endl;
-  
+
+
+  // prepare XML document
   xml_document<> doc;
-  
-  // xml declaration
   xml_node<>* decl = doc.allocate_node(node_declaration);
   decl->append_attribute(doc.allocate_attribute("version", "1.0"));
   decl->append_attribute(doc.allocate_attribute("encoding", "utf-8"));
   doc.append_node(decl);
-
   xml_node<> *rootnode = doc.allocate_node(node_element, "root");
   doc.append_node(rootnode);
-  
+
+  // insert analysis name
   if (analysisName != "")
   {
     xml_node<> *analysisnamenode = doc.allocate_node(node_element, "analysis");
     rootnode->append_node(analysisnamenode);
     analysisnamenode->append_attribute(doc.allocate_attribute
     (
-      "name", 
+      "name",
       doc.allocate_string(analysisName.c_str())
     ));
   }
 
-  appendToNode(doc, *rootnode, file.parent_path());
-  
-  {
+  // store parameters
+  appendToNode(doc, *rootnode, parent_path);
+
+  os << doc;
+}
+
+void ParameterSet::saveToFile(const boost::filesystem::path& file, std::string analysisName ) const
+{
     std::ofstream f(file.c_str());
-    f << doc << std::endl;
+    saveToStream( f, file.parent_path(), analysisName );
+    f << std::endl;
     f << std::flush;
     f.close();
-  }
 }
 
 std::string ParameterSet::readFromFile(const boost::filesystem::path& file)
@@ -264,6 +293,14 @@ std::string ParameterSet::readFromFile(const boost::filesystem::path& file)
   return analysisName;
 }
 
+
+std::ostream& operator<<(std::ostream& os, const ParameterSet& ps)
+{
+    os << ps.plainTextRepresentation(0);
+    return os;
+}
+
+
 defineType(SubsetParameter);
 addToFactoryTable(Parameter, SubsetParameter);
 
@@ -272,13 +309,13 @@ SubsetParameter::SubsetParameter()
 {
 }
 
-SubsetParameter::SubsetParameter(const std::string& description)
-: Parameter(description)
+SubsetParameter::SubsetParameter(const std::string& description,  bool isHidden, bool isExpert, bool isNecessary, int order)
+: Parameter(description, isHidden, isExpert, isNecessary, order)
 {
 }
 
-SubsetParameter::SubsetParameter(const ParameterSet& defaultValue, const std::string& description)
-: Parameter(description),
+SubsetParameter::SubsetParameter(const ParameterSet& defaultValue, const std::string& description,  bool isHidden, bool isExpert, bool isNecessary, int order)
+: Parameter(description, isHidden, isExpert, isNecessary, order),
   ParameterSet(defaultValue.entries())
 {
 }
@@ -293,10 +330,41 @@ std::string SubsetParameter::latexRepresentation() const
   return ParameterSet::latexRepresentation();
 }
 
+std::string SubsetParameter::plainTextRepresentation(int indent) const
+{
+  return "\n" + ParameterSet::plainTextRepresentation(indent+1);
+}
+
+bool SubsetParameter::isPacked() const
+{
+  bool is_packed=false;
+  for(auto p: *this)
+  {
+    is_packed |= p->second->isPacked();
+  }
+  return is_packed;
+}
+
+void SubsetParameter::pack()
+{
+  for(auto p: *this)
+  {
+    p->second->pack();
+  }
+}
+
+void SubsetParameter::unpack()
+{
+  for(auto p: *this)
+  {
+    p->second->unpack();
+  }
+}
+
 
 Parameter* SubsetParameter::clone() const
 {
-  return new SubsetParameter(*this, description_.simpleLatex());
+  return new SubsetParameter(*this, description_.simpleLatex(), isHidden_, isExpert_, isNecessary_, order_);
 }
 
 rapidxml::xml_node<>* SubsetParameter::appendToNode(const std::string& name, rapidxml::xml_document<>& doc, rapidxml::xml_node<>& node, 
@@ -323,16 +391,17 @@ void SubsetParameter::readFromNode(const std::string& name, rapidxml::xml_docume
 defineType(SelectableSubsetParameter);
 addToFactoryTable(Parameter, SelectableSubsetParameter);
 
-SelectableSubsetParameter::SelectableSubsetParameter(const std::string& description)
-: Parameter(description)
+SelectableSubsetParameter::SelectableSubsetParameter(const std::string& description,  bool isHidden, bool isExpert, bool isNecessary, int order)
+: Parameter(description, isHidden, isExpert, isNecessary, order)
 {
 }
 
-SelectableSubsetParameter::SelectableSubsetParameter(const key_type& defaultSelection, const SubsetList& defaultValue, const std::string& description)
-: Parameter(description),
+SelectableSubsetParameter::SelectableSubsetParameter(const key_type& defaultSelection, const SubsetList& defaultValue, const std::string& description,
+                                                     bool isHidden, bool isExpert, bool isNecessary, int order)
+: Parameter(description, isHidden, isExpert, isNecessary, order),
   selection_(defaultSelection)
 {
-  BOOST_FOREACH( const SelectableSubsetParameter::SingleSubset& i, defaultValue )
+  for ( const SelectableSubsetParameter::SingleSubset& i: defaultValue )
   {
     std::string key(boost::get<0>(i));
     value_.insert(key, boost::get<1>(i)); // take ownership of objects in given list!
@@ -359,9 +428,51 @@ std::string SelectableSubsetParameter::latexRepresentation() const
   return os.str();
 }
 
+std::string SelectableSubsetParameter::plainTextRepresentation(int indent) const
+{
+//  return "(Not implemented)";
+  std::ostringstream os;
+  os<<"selected as \""<<SimpleLatex(selection_).toPlainText()<<"\"";
+  if (operator()().size()>0)
+  {
+      os<<": \n";
+      os<<operator()().plainTextRepresentation(indent+1);
+  }
+  return os.str();
+}
+
+bool SelectableSubsetParameter::isPacked() const
+{
+  bool is_packed=false;
+  auto& v = this->operator()(); // get active subset
+  for (auto p: v)
+  {
+    is_packed |= p->second->isPacked();
+  }
+  return is_packed;
+}
+
+void SelectableSubsetParameter::pack()
+{
+  auto& v = this->operator()(); // get active subset
+  for (auto p: v)
+  {
+    p->second->pack();
+  }
+}
+
+void SelectableSubsetParameter::unpack()
+{
+  auto& v = this->operator()(); // get active subset
+  for (auto p: v)
+  {
+    p->second->unpack();
+  }
+}
+
 Parameter* SelectableSubsetParameter::clone () const
 {
-  SelectableSubsetParameter *np=new SelectableSubsetParameter(description_.simpleLatex());
+  SelectableSubsetParameter *np=new SelectableSubsetParameter(description_.simpleLatex(), isHidden_, isExpert_, isNecessary_, order_);
   np->selection_=selection_;
   for (ItemList::const_iterator i=value_.begin(); i!=value_.end(); i++)
   {
@@ -402,6 +513,50 @@ void SelectableSubsetParameter::readFromNode(const std::string& name, rapidxml::
     
     operator()().readFromNode(doc, *child, inputfilepath);
   }
+}
+
+
+
+ParameterSet_Validator::~ParameterSet_Validator()
+{}
+
+void ParameterSet_Validator::update(const ParameterSet& ps)
+{
+    errors_.clear();
+    warnings_.clear();
+    ps_=ps;
+}
+
+bool ParameterSet_Validator::isValid() const
+{
+    return (warnings_.size()==0) && (errors_.size()==0);
+}
+
+const ParameterSet_Validator::WarningList& ParameterSet_Validator::ParameterSet_Validator::warnings() const
+{
+    return warnings_;
+}
+
+const ParameterSet_Validator::ErrorList& ParameterSet_Validator::ParameterSet_Validator::errors() const
+{
+    return errors_;
+}
+
+
+
+
+ParameterSet_Visualizer::~ParameterSet_Visualizer()
+{}
+
+void ParameterSet_Visualizer::update(const ParameterSet& ps)
+{
+    ps_=ps;
+}
+
+
+
+void ParameterSet_Visualizer::updateVisualizationElements(QoccViewWidget*, QModelTree*)
+{
 }
 
 }

@@ -22,7 +22,7 @@
 #include "base/boost_include.h"
 #include "base/exception.h"
 #include "base/linearalgebra.h"
-#include "openfoam/analysiscaseelements.h"
+#include "openfoam/caseelements/analysiscaseelements.h"
 #include <boost/program_options/options_description.hpp>
 #include <boost/program_options/parsers.hpp>
 #include <boost/program_options/variables_map.hpp>
@@ -65,7 +65,7 @@ void evaluateFO(boost::filesystem::path cfgfile, bool skiplatex)
 	{
 	  ParameterSet ps = outputFilterFunctionObject::defaultParameters(FOtype);
 	  ps.readFromNode(doc, *e, cfgfile.parent_path());
-	  boost::shared_ptr<outputFilterFunctionObject> fo(outputFilterFunctionObject::lookup(FOtype, cm, ps));
+	  std::shared_ptr<outputFilterFunctionObject> fo(outputFilterFunctionObject::lookup(FOtype, cm, ps));
 	  fo->evaluate
 	  (
 	    cm, boost::filesystem::current_path(), results, 

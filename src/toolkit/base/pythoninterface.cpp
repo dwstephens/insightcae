@@ -25,7 +25,11 @@
 
 
 #include "boost/python.hpp"
+#if (BOOST_VERSION>=106500)
+#include "boost/python/numpy.hpp"
+#else
 #include "boost/python/numeric.hpp"
+#endif
 
 
 
@@ -36,7 +40,7 @@ namespace insight
     
     
     
-aquire_py_GIL::aquire_py_GIL() 
+acquire_py_GIL::acquire_py_GIL()
 {
     state = PyGILState_Ensure();
 }
@@ -44,7 +48,7 @@ aquire_py_GIL::aquire_py_GIL()
 
 
 
-aquire_py_GIL::~aquire_py_GIL() 
+acquire_py_GIL::~acquire_py_GIL()
 {
     PyGILState_Release(state);
 }
@@ -52,17 +56,17 @@ aquire_py_GIL::~aquire_py_GIL()
 
 
 
-release_py_GIL::release_py_GIL() 
-{
-    state = PyEval_SaveThread();
-}
+//release_py_GIL::release_py_GIL()
+//{
+////    state = PyEval_SaveThread();
+//}
 
 
 
-release_py_GIL::~release_py_GIL() 
-{
-    PyEval_RestoreThread(state);
-}
+//release_py_GIL::~release_py_GIL()
+//{
+////    PyEval_RestoreThread(state);
+//}
     
     
     
@@ -73,7 +77,7 @@ void PythonInterpreter::startInterpreter()
     {
         Py_Initialize();
         PyEval_InitThreads();
-        mainThreadState = PyEval_SaveThread();
+//        mainThreadState = PyEval_SaveThread();
         ranInitialize_=true;
     }
     else
@@ -83,7 +87,7 @@ void PythonInterpreter::startInterpreter()
 }
 
 PythonInterpreter::PythonInterpreter()
-: mainThreadState(NULL),
+: mainThreadState(nullptr),
   ranInitialize_(false)
 {
     startInterpreter();
@@ -96,7 +100,7 @@ PythonInterpreter::~PythonInterpreter()
 {
     if (ranInitialize_ && Py_IsInitialized())
     {
-        PyEval_RestoreThread(mainThreadState);
+//        PyEval_RestoreThread(mainThreadState);
         Py_Finalize();
     }
 }

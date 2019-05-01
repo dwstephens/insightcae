@@ -21,6 +21,7 @@
 #define STL_H
 
 #include "cadfeature.h"
+#include "MeshVS_Mesh.hxx"
 
 namespace insight {
 namespace cad {
@@ -31,10 +32,14 @@ class STL
 {
     boost::filesystem::path fname_;
 
-    STL
-    (
-        const boost::filesystem::path& fname
-    );
+    std::shared_ptr<gp_Trsf> trsf_;
+    //or
+    FeaturePtr other_trsf_;
+
+    STL(const boost::filesystem::path& fname);
+    STL(const boost::filesystem::path& fname, const gp_Trsf& trsf);
+    STL(const boost::filesystem::path& fname, FeaturePtr other_trsf);
+
 
 protected:
     virtual size_t calcHash() const;
@@ -48,6 +53,18 @@ public:
     (
         const boost::filesystem::path& fname
     );
+    static FeaturePtr create_trsf
+    (
+        const boost::filesystem::path& fname,
+        gp_Trsf trsf
+    );
+    static FeaturePtr create_other
+    (
+        const boost::filesystem::path& fname,
+        FeaturePtr other_trsf
+    );
+
+//    virtual Handle_AIS_InteractiveObject buildVisualization() const;
 
     virtual void insertrule(parser::ISCADParser& ruleset) const;
     virtual FeatureCmdInfoList ruleDocumentation() const;

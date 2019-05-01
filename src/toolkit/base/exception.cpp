@@ -46,6 +46,9 @@ std::ostream& operator<<(std::ostream& os, const Exception& ex)
 Exception::Exception(const std::string& msg, bool strace)
 {
   message_=msg;
+
+  exceptionContext.snapshot(context_);
+
   if (strace)
   {
     int num_max=30;
@@ -114,11 +117,100 @@ Exception::~Exception()
 
 Exception::operator std::string() const
 {
+  string context="";
+  for (const auto& c: context_)
+    {
+      context+= "\nwhile "+string(c);
+    }
   if (strace_!="")
-    return "\n\nERROR MESSAGE:\n\n"+message_+"\n\n\nSTACK TRACE:\n"+strace_+"\n\n";
+    return
+        "\n\n"
+        "ERROR MESSAGE:"
+        "\n\n"
+        +message_
+        +context+
+        "\n\n\n"
+        "STACK TRACE:\n"
+        +strace_+
+        "\n\n";
   else
-    return message_;
+    return message_+context;
 }
+
+
+CurrentExceptionContext::CurrentExceptionContext(const std::string& desc)
+: desc_(desc)
+{
+  exceptionContext.push_back(this);
+}
+
+
+CurrentExceptionContext::~CurrentExceptionContext()
+{
+  if (exceptionContext.back()==this)
+    exceptionContext.pop_back();
+  else
+    {
+      std::cerr<<"Oops: CurrentExceptionContext destructor: expected to be last!"<<endl;
+    }
+}
+
+void ExceptionContext::snapshot(std::vector<std::string>& context)
+{
+  context.clear();
+  for (const auto& i: *this)
+    {
+      context.push_back(*i);
+    }
+}
+
+thread_local ExceptionContext exceptionContext;
+
+std::string valueList_to_string(const std::vector<double>& vals, size_t maxlen)
+{
+  std::ostringstream os;
+  os <<"(";
+
+  if (vals.size()>0)
+  {
+    size_t n1=std::min(vals.size(), maxlen-2);
+
+    for (size_t i=0; i<n1; i++)
+      os<<" "<<vals[i];
+
+    if (n1<vals.size())
+      {
+        os << " .... "<<vals.back();
+      }
+  }
+  os<<" )";
+  return os.str();
+}
+
+
+std::string valueList_to_string(const arma::mat& vals, arma::uword maxlen)
+{
+  std::ostringstream os;
+  os <<"(";
+
+  arma::uword nr=vals.n_rows;
+  if (nr>0)
+  {
+    size_t n1=std::min(nr, maxlen-2);
+
+    for (size_t i=0; i<n1; i++)
+      os<<" "<<vals.row(i);
+
+    if (n1<vals.size())
+      {
+        os << " .... "<<vals.row(nr-1);
+      }
+  }
+
+  os<<" )";
+  return os.str();
+}
+
 
 void Warning(const std::string& msg)
 {

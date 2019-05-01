@@ -121,7 +121,7 @@ void Geometry::addIntoDictionary(OFDictData::dict& sHMDict) const
   if (p_.regionRefinements.size()>0)
   {
     OFDictData::dict rrd;
-    BOOST_FOREACH(const Parameters::regionRefinements_default_type& rr, p_.regionRefinements)
+    for (const Parameters::regionRefinements_default_type& rr: p_.regionRefinements)
     {
       OFDictData::dict ld;
       OFDictData::list rrl;
@@ -138,7 +138,7 @@ void Geometry::addIntoDictionary(OFDictData::dict& sHMDict) const
   OFDictData::dict layerdict;
   layerdict["nSurfaceLayers"]=p_.nLayers;
   sHMDict.subDict("addLayersControls").subDict("layers")["\""+p_.name+".*\""]=layerdict;
-  BOOST_FOREACH(const Parameters::regionRefinements_default_type& rr, p_.regionRefinements)
+  for (const Parameters::regionRefinements_default_type& rr: p_.regionRefinements)
   {
    OFDictData::dict layerdict;
    layerdict["nSurfaceLayers"]=0;
@@ -289,6 +289,52 @@ bool RefinementBox::setGeometrySubdict(OFDictData::dict& d, std::string&) const
 
 
 
+
+defineType(RefinementCylinder);
+addToFactoryTable(Feature, RefinementCylinder);
+addToStaticFunctionTable(Feature, RefinementCylinder, defaultParameters);
+
+RefinementCylinder::RefinementCylinder(const ParameterSet& ps)
+: RefinementRegion(ps),
+  p_(ps)
+{
+}
+
+bool RefinementCylinder::setGeometrySubdict(OFDictData::dict& d, std::string&) const
+{
+  d["type"]="searchableCylinder";
+  d["point1"]=OFDictData::to_OF(p_.point1);
+  d["point2"]=OFDictData::to_OF(p_.point2);
+  d["radius"]=p_.radius;
+  return true;
+}
+
+
+
+
+
+defineType(RefinementSphere);
+addToFactoryTable(Feature, RefinementSphere);
+addToStaticFunctionTable(Feature, RefinementSphere, defaultParameters);
+
+RefinementSphere::RefinementSphere(const ParameterSet& ps)
+: RefinementRegion(ps),
+  p_(ps)
+{
+}
+
+bool RefinementSphere::setGeometrySubdict(OFDictData::dict& d, std::string&) const
+{
+  d["type"]="searchableSphere";
+  d["centre"]=OFDictData::to_OF(p_.center);
+  d["radius"]=p_.radius;
+  return true;
+}
+
+
+
+
+
 defineType(RefinementGeometry);
 addToFactoryTable(Feature, RefinementGeometry);
 addToStaticFunctionTable(Feature, RefinementGeometry, defaultParameters);
@@ -409,9 +455,9 @@ void setStdSnapCtrls(OFDictData::dict& snapCtrls)
   snapCtrls["nSmoothPatch"]=3;
   snapCtrls["tolerance"]=4.0;
   snapCtrls["nSolveIter"]=30;
-  snapCtrls["nRelaxIter"]=5;  
+  snapCtrls["nRelaxIter"]=15;  
 
-  snapCtrls["nFeatureSnapIter"]=10;  
+  snapCtrls["nFeatureSnapIter"]=15;  
   snapCtrls["implicitFeatureSnap"]=true;
   snapCtrls["explicitFeatureSnap"]=false;
   snapCtrls["multiRegionFeatureSnap"]=false;  
@@ -472,13 +518,13 @@ void setRelaxedQualityCtrls(OFDictData::dict& qualityCtrls)
   qualityCtrls["minArea"]=-1.0;  
   qualityCtrls["minTwist"]=0.001;  
   qualityCtrls["minDeterminant"]=0.00001;  
-  qualityCtrls["minFaceWeight"]=0.001;  
+  qualityCtrls["minFaceWeight"]=0.01;  
   qualityCtrls["minVolRatio"]=0.0005;  
   qualityCtrls["minTriangleTwist"]=-1.0;  
   qualityCtrls["nSmoothScale"]=4;  
   qualityCtrls["errorReduction"]=0.75;  
 
-  qualityCtrls["minTetQuality"]= -1; //1e-40;  
+  qualityCtrls["minTetQuality"]= 1e-40;  
 }
 
 void setDisabledQualityCtrls(OFDictData::dict& qualityCtrls)
@@ -519,7 +565,7 @@ void setNoQualityCtrls(OFDictData::dict& qualityCtrls)
   qualityCtrls["nSmoothScale"]=4;  
   qualityCtrls["errorReduction"]=0.75;  
 
-  qualityCtrls["minTetQuality"]=-1e30;  
+  qualityCtrls["minTetQuality"]=-1;  
 }
 
 double computeFinalLayerThickness(double totalLayerThickness, double expRatio, int nlayer)
@@ -566,16 +612,20 @@ void snappyHexMeshConfiguration::addIntoDictionaries(OFdicts& dictionaries) cons
 
   //  populate with defaults
   setStdSnapCtrls(snapCtrls);
+  snapCtrls["implicitFeatureSnap"]=p.doImplicitFeatureSnap;
+  snapCtrls["explicitFeatureSnap"]=p.doExplicitFeatureSnap;
+
   setStdCastellatedCtrls(castellatedCtrls);
+  castellatedCtrls["allowFreeStandingZoneFaces"]=p.allowFreeStandingZoneFaces;
   
   if (p.PiM.size()>1)
   {
     OFDictData::list PiM;
-    BOOST_FOREACH(const snappyHexMeshConfiguration::Parameters::PiM_default_type& pim, p.PiM)
+    for (const snappyHexMeshConfiguration::Parameters::PiM_default_type& pim: p.PiM)
     {
         PiM.push_back(OFDictData::vector3(pim));
     }
-    castellatedCtrls["locationInMesh"]=PiM;
+    castellatedCtrls["locationsInMesh"]=PiM;
   }
   else if (p.PiM.size()==1)
   {
@@ -604,10 +654,8 @@ void snappyHexMeshConfiguration::addIntoDictionaries(OFdicts& dictionaries) cons
     setNoQualityCtrls(qualityCtrls);
   }
 
-//   BOOST_FOREACH( const snappyHexMeshFeats::Feature& feat, ops)
-  BOOST_FOREACH(const snappyHexMeshConfiguration::Parameters::features_default_type& feat, p.features)
+  for (const snappyHexMeshConfiguration::Parameters::features_default_type& feat: p.features)
   {
-//       feat->modifyFiles(ofc, location);
       feat->addIntoDictionary(sHMDict);
   }
   
@@ -615,14 +663,29 @@ void snappyHexMeshConfiguration::addIntoDictionaries(OFdicts& dictionaries) cons
 
 void snappyHexMeshConfiguration::modifyCaseOnDisk ( const OpenFOAMCase& cm, const boost::filesystem::path& location ) const
 {
-  BOOST_FOREACH(const snappyHexMeshConfiguration::Parameters::features_default_type& feat, p_.features)
+  for (const snappyHexMeshConfiguration::Parameters::features_default_type& feat: p_.features)
   {
       feat->modifyFiles(cm, location);
-//       feat->addIntoDictionary(sHMDict);
   }
 }
 
 
+void reconstructParMesh
+(
+  const OpenFOAMCase& ofc,
+  const boost::filesystem::path& location
+)
+{
+    int np=readDecomposeParDict(location);
+    bool is_parallel = (np>1);
+
+
+    if (is_parallel)
+    {
+      ofc.executeCommand(location, "reconstructParMesh", list_of<string>("-constant") );
+      ofc.removeProcessorDirectories(location);
+    }
+}
 
 void snappyHexMesh
 (
@@ -666,14 +729,16 @@ void snappyHexMesh
   snapCtrls["explicitFeatureSnap"]=p.doExplicitFeatureSnap;
 
   setStdCastellatedCtrls(castellatedCtrls);
+  castellatedCtrls["allowFreeStandingZoneFaces"]=p.allowFreeStandingZoneFaces;
+
   if (p.PiM.size()>1)
   {
     OFDictData::list PiM;
-    BOOST_FOREACH(const snappyHexMeshConfiguration::Parameters::PiM_default_type& pim, p.PiM)
+    for (const snappyHexMeshConfiguration::Parameters::PiM_default_type& pim: p.PiM)
     {
         PiM.push_back(OFDictData::vector3(pim));
     }
-    castellatedCtrls["locationInMesh"]=PiM;
+    castellatedCtrls["locationsInMesh"]=PiM;
   }
   else if (p.PiM.size()==1)
   {
@@ -702,8 +767,7 @@ void snappyHexMesh
     setNoQualityCtrls(qualityCtrls);
   }
 
-//   BOOST_FOREACH( const snappyHexMeshFeats::Feature& feat, ops)
-  BOOST_FOREACH(const snappyHexMeshConfiguration::Parameters::features_default_type& feat, p.features)
+  for (const snappyHexMeshConfiguration::Parameters::features_default_type& feat: p.features)
   {
       feat->modifyFiles(ofc, location);
       feat->addIntoDictionary(sHMDict);
@@ -741,7 +805,7 @@ void snappyHexMesh
   boost::regex re_extrudedfaces("^Extruding ([0-9]+) out of ([0-9]+) faces.*");
   boost::match_results<std::string::const_iterator> what;
   int exfaces=-1, totalfaces=-1;
-  BOOST_FOREACH(const std::string& line, output)
+  for (const std::string& line: output)
   {
     if (boost::regex_match(line, what, re_extrudedfaces))
     {
@@ -768,10 +832,15 @@ void snappyHexMesh
     }
   }
   
-  if (is_parallel && (!keepdecomposedafterfinish) )
+//  if (is_parallel && (!keepdecomposedafterfinish) )
+//  {
+//    ofc.executeCommand(location, "reconstructParMesh", list_of<string>("-constant") );
+//    ofc.removeProcessorDirectories(location);
+//  }
+
+  if (!keepdecomposedafterfinish)
   {
-    ofc.executeCommand(location, "reconstructParMesh", list_of<string>("-constant") );
-    ofc.removeProcessorDirectories(location);
+    reconstructParMesh(ofc, location);
   }
   
   

@@ -41,28 +41,33 @@ set(toolkit_SOURCES
     base/vtktools.cpp
     base/caseelement.cpp
     base/case.cpp
+    base/units.cpp
     
     openfoam/blockmesh_templates.cpp
-    openfoam/analysiscaseelements.cpp
     openfoam/openfoamanalysis.cpp
     openfoam/openfoamcase.cpp
     openfoam/snappyhexmesh.cpp
-    openfoam/numericscaseelements.cpp
     openfoam/cfmesh.cpp
-    openfoam/basiccaseelements.cpp
     openfoam/openfoamdict.cpp
     openfoam/openfoamtools.cpp
-    openfoam/thermophysicalcaseelements.cpp
-    openfoam/fielddata.cpp
-    openfoam/boundarycondition_heat.cpp
-    openfoam/boundarycondition_meshmotion.cpp
-    openfoam/boundarycondition_multiphase.cpp
-    openfoam/boundarycondition_turbulence.cpp
-    openfoam/boundaryconditioncaseelements.cpp
     openfoam/blockmesh.cpp
-    openfoam/turbulencemodelcaseelements.cpp
-    openfoam/electromagneticscaseelements.cpp
-    
+    openfoam/fielddata.cpp
+    openfoam/paraview.cpp
+    openfoam/remoteexecution.cpp
+
+    openfoam/caseelements/turbulencemodelcaseelements.cpp
+    openfoam/caseelements/analysiscaseelements.cpp
+    openfoam/caseelements/pimplesettings.cpp
+    openfoam/caseelements/numericscaseelements.cpp
+    openfoam/caseelements/basiccaseelements.cpp
+    openfoam/caseelements/thermophysicalcaseelements.cpp
+    openfoam/caseelements/electromagneticscaseelements.cpp
+    openfoam/caseelements/boundaryconditioncaseelements.cpp
+    openfoam/caseelements/boundaryconditions/boundarycondition_heat.cpp
+    openfoam/caseelements/boundaryconditions/boundarycondition_meshmotion.cpp
+    openfoam/caseelements/boundaryconditions/boundarycondition_multiphase.cpp
+    openfoam/caseelements/boundaryconditions/boundarycondition_turbulence.cpp
+
     code_aster/caexportfile.cpp
     code_aster/codeasterrun.cpp
 )
@@ -74,11 +79,11 @@ IF(INSIGHT_BUILD_PYTHONBINDINGS)
 ENDIF()
 
 find_package(VTK COMPONENTS
-    vtkFiltersCore
-    vtkCommonCore
-    vtkIOImage
-    vtkIOXML
-    vtkImagingCore
+    #vtkFiltersCore
+    #vtkCommonCore
+    #vtkIOImage
+    #vtkIOXML
+    #vtkImagingCore
     REQUIRED
 )
 
@@ -87,9 +92,10 @@ file(GLOB_RECURSE toolkit_HEADERS "*.h")
 include(${VTK_USE_FILE})
 link_directories(${Boost_LIBRARY_DIR})
 add_library(toolkit SHARED ${toolkit_SOURCES})
-target_link_libraries(toolkit ${PYTHON_LIBRARIES} ${Boost_LIBRARIES} ${ARMADILLO_LIBRARY} ${GSL_LIBRARIES} dl ${VTK_LIBRARIES})
+target_link_libraries(toolkit ${PYTHON_LIBRARIES} ${Boost_LIBRARIES} ${ARMADILLO_LIBRARY} ${GSL_LIBRARIES} ${VTK_LIBRARIES})
 
 target_include_directories(toolkit 
+  PUBLIC ${VTK_INCLUDE_DIRS}
   PUBLIC ${PYTHON_INCLUDE_DIR}/python2.7
   PUBLIC ${Boost_INCLUDE_DIR}
   PUBLIC ${ARMADILLO_INCLUDE_DIRS}

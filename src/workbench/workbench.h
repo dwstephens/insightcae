@@ -21,10 +21,11 @@
 #ifndef workbench_H
 #define workbench_H
 
-#include <QtGui/QMainWindow>
-#include <QtGui/QMdiArea>
+#include <QMainWindow>
+#include <QMdiArea>
 
 #include <QApplication>
+#include <QMenuBar>
 
 class WorkbenchApplication
 : public QApplication
@@ -53,16 +54,34 @@ class workbench
 Q_OBJECT
 private:
   QMdiArea *mdiArea_;
-  
+
+public:
+
+   class WidgetWithDynamicMenuEntries
+   {
+   protected:
+       QMenuBar* mainMenu_ =NULL;
+   public:
+       virtual void insertMenu(QMenuBar* mainMenu) { mainMenu_=mainMenu; }
+       virtual void removeMenu() { mainMenu_=NULL; }
+   };
+
+   WidgetWithDynamicMenuEntries *lastActive_ =0;
+
 public:
     workbench();
     virtual ~workbench();
 
     void openAnalysis(const QString& fn);
-    
+    void closeEvent(QCloseEvent *event);
+    void readSettings();
+
 private slots:
     void newAnalysis();
     void onOpenAnalysis();
+
+private slots:
+    void onSubWindowActivated( QMdiSubWindow * window );
 };
 
 #endif // workbench_H

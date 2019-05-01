@@ -39,7 +39,12 @@ namespace insight {
 namespace bmd
 {
 
+
+
+
 class blockMesh;
+
+
 
 
 typedef arma::mat Point;
@@ -49,13 +54,26 @@ typedef arma::mat Point;
 typedef bool (*Comp)(const Point& v1, const Point& v2);
 bool compare(const Point& v1, const Point& v2);
 
+
+
+
 typedef std::vector<Point> PointList;
 typedef std::map<Point, int, Comp> PointMap;
+
+
+
 
 PointList P_4(const Point& p1, const Point& p2, const Point& p3, const Point& p4);
 PointList P_4(const PointList& pts, int p1, int p2, int p3, int p4);
 PointList P_8(const Point& p1, const Point& p2, const Point& p3, const Point& p4,
 	      const Point& p5, const Point& p6, const Point& p7, const Point& p8);
+
+
+
+
+OFDictData::list bmdEntry(const PointList& pts, const PointMap& allPoints);
+
+
 
 
 class Patch
@@ -69,6 +87,7 @@ protected:
   
 public:
   Patch(std::string typ="patch");
+  virtual ~Patch();
   
   void addFace(Point c1, Point c2, Point c3, Point c4);
   void addFace(const PointList& corners);
@@ -81,10 +100,17 @@ public:
   void clear();
   
   Patch* transformed(const arma::mat& tm, bool inv=false) const;
+  virtual Patch* clone() const;
+
+  inline const FaceList& faces() const { return faces_; }
 
   std::vector<OFDictData::data> 
   bmdEntry(const PointMap& allPoints, const std::string& name, int OFversion) const;
+
 };
+
+
+
 
 class GradingAnalyzer
 {
@@ -108,6 +134,9 @@ public:
   double calc_L(double delta0, int n) const;
   double calc_delta1(double delta0) const;
 };
+
+
+
 
 class Block
 {
@@ -143,6 +172,7 @@ public:
   bmdEntry(const PointMap& allPoints, int OFversion) const;
 
   Block* transformed(const arma::mat& tm, bool inv=false) const;
+  virtual Block* clone() const;
   
   inline int nCells() const
   {
@@ -150,6 +180,8 @@ public:
   }
 
 };
+
+
 
 
 class transform2D
@@ -176,6 +208,9 @@ public:
     void addFwdRvsPatches(blockMesh *bmd);
 };
 
+
+
+
 class plane2D
 : public transform2D
 {
@@ -191,6 +226,8 @@ public:
 };
 
 
+
+
 class wedge2D
 : public transform2D
 {
@@ -203,6 +240,8 @@ public:
     virtual arma::mat fwd(const arma::mat& p) const;
     virtual arma::mat rvs(const arma::mat& p) const;
 };
+
+
 
 
 class Block2D
@@ -223,6 +262,9 @@ public:
     );
 };
 
+
+
+
 class Edge
 {
 protected:
@@ -231,15 +273,23 @@ protected:
 public:
   Edge(const Point& c0, const Point& c1);
   virtual ~Edge();
-  
+
+  bool connectsPoints(const Point& c0, const Point& c1) const;
+  inline const Point& c0() const { return c0_; }
+  inline const Point& c1() const { return c1_; }
+
   virtual std::vector<OFDictData::data>
   bmdEntry(const PointMap& allPoints, int OFversion) const =0;
 
   virtual void registerPoints(blockMesh& bmd) const;
   
   virtual Edge* transformed(const arma::mat& tm) const =0;
+  virtual Edge* clone() const =0;
 
 };
+
+
+
 
 class ArcEdge
 : public Edge
@@ -253,7 +303,10 @@ public:
   virtual std::vector<OFDictData::data> bmdEntry(const PointMap& allPoints, int OFversion) const;
 
   virtual Edge* transformed(const arma::mat& tm) const;
+  virtual Edge* clone() const;
 };
+
+
 
 
 class EllipseEdge
@@ -274,7 +327,10 @@ public:
     virtual std::vector<OFDictData::data> bmdEntry(const PointMap& allPoints, int OFversion) const;
 
     virtual Edge* transformed(const arma::mat& tm) const;
+    virtual Edge* clone() const;
 };
+
+
 
 
 class CircularEdge
@@ -288,6 +344,20 @@ public:
       arma::mat axis=vec3(0,0,1)
     );
 };
+
+class CircularEdge_Center
+: public ArcEdge
+{
+public:
+    CircularEdge_Center
+    (
+      const Point& c0, const Point& c1,
+      const Point& center
+    );
+};
+
+
+
 
 /*
 class GenArcEdge
@@ -322,6 +392,9 @@ class GenArcEdge
 };
 */
 
+
+
+
 class SplineEdge
 : public Edge
 {
@@ -336,6 +409,7 @@ public:
   virtual std::vector<OFDictData::data> bmdEntry(const PointMap& allPoints, int OFversion) const;
 
   virtual Edge* transformed(const arma::mat& tm) const;
+  virtual Edge* clone() const;
 };
 
 /*
@@ -354,6 +428,7 @@ def splineEdgeAlongCurve(curve, p0, p1,
     allEdges.append(bmdSplineEdge([p0, p1], pointsInRange(curve, t0, t1)))
     return t0, t1
 */
+
 
 
 
@@ -430,6 +505,9 @@ class SplineEdge2D
 };
 */
 
+
+
+
 class blockMesh 
 : public OpenFOAMCaseElement
 {
@@ -447,6 +525,8 @@ protected:
   
 public:
   blockMesh(OpenFOAMCase& c);
+
+  void copy(const blockMesh& other);
   
   void setScaleFactor(double sf);
   void setDefaultPatch(const std::string& name, std::string type="patch");
@@ -487,6 +567,8 @@ public:
     allPatches_.insert(key, patch); 
     return *patch; 
   }
+
+  bool hasEdgeBetween(const Point& p1, const Point& p2) const;
   
   /**
    * Add the given patch, if none with the same name is present.
@@ -512,12 +594,19 @@ public:
   
   void removePatch(const std::string& name);
   
+  OFDictData::dict& getBlockMeshDict(insight::OFdicts& dictionaries) const;
   virtual void addIntoDictionaries(insight::OFdicts& dictionaries) const;
   
   static std::string category() { return "Meshing"; }
 };
 
-typedef boost::shared_ptr<blockMesh> blockMeshPtr;
+
+
+
+typedef std::shared_ptr<blockMesh> blockMeshPtr;
+
+
+
 
 }
 

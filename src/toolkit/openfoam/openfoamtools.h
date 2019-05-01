@@ -32,10 +32,16 @@
 #include "openfoam/openfoamcase.h"
 #include "progrock/cppx/collections/options_boosted.h"
 
+
+#ifdef SWIG
+%template(TimeDirectoryList) std::map<double, boost::filesystem::path>;
+#endif
+
 namespace insight
 {
   
 typedef std::map<double, boost::filesystem::path> TimeDirectoryList;
+
 
 TimeDirectoryList listTimeDirectories(const boost::filesystem::path& dir);
 
@@ -282,7 +288,7 @@ inline set* new_clone(const set& op)
  */
 struct ColumnInfo
 {
-  int col, ncmpt;
+  size_t col, ncmpt;
 };
 
 //typedef std::map<std::string, ColumnInfo > ColumnDescription;
@@ -291,7 +297,7 @@ class ColumnDescription
 {
 public:
     inline bool contains(const std::string& name) const { return this->find(name) != this->end(); }
-    inline int colIndex(const std::string& name) const 
+    inline long int colIndex(const std::string& name) const
     { 
         auto it = this->find(name);
         if (it != this->end() ) 
@@ -494,7 +500,7 @@ template<class T>
 const T& findSet(const boost::ptr_vector<sampleOps::set>& sets, const std::string& name)
 {
   const T* ptr=NULL;
-  BOOST_FOREACH(const set& s, sets)
+  for (const set& s: sets)
   {
     if (s.name()==name)
     {
@@ -559,182 +565,6 @@ void runPvPython
   const std::vector<std::string> pvpython_commands,
   bool keepScript = false
 );
-
-namespace paraview
-{
-  
-    
-    
-    
-class PVScene
-{
-public:
-//   declareFactoryTableNoArgs(PVScene);
-  declareDynamicClass(PVScene);
-  
-public:
-  
-#include "openfoamtools__PVScene__Parameters.h"
-/*
-PARAMETERSET>>> PVScene Parameters
-
-resetview = bool false "If true, the view is cleared before rendering. Previous scene will be overlayed otherwise"
-imagename = string "" "Image name. Will be used as filename. If blank, the view created but not rendered. This can be useful to overlay with the next scene."
-
-<<<PARAMETERSET
-*/
-
-  declareType("PVscene");
-  
-  virtual ~PVScene();
-  
-  virtual std::string pythonCommands() const =0;
-  virtual std::vector<boost::filesystem::path> createdFiles() const;
-
-  static std::string pvec(const arma::mat& v);
-};
-
-typedef boost::shared_ptr<PVScene> PVScenePtr;
-
-
-
-class CustomPVScene
-: public PVScene
-{
-  
-public:
-#include "openfoamtools__CustomPVScene__Parameters.h"
-/*
-PARAMETERSET>>> CustomPVScene Parameters
-
-inherits insight::paraview::PVScene::Parameters
-
-command = string "" "Python snippet to execute in pvBatch"
-
-<<<PARAMETERSET
-*/
-protected:
-  Parameters p_;
-
-public:
-  declareType("CustomPVScene");
-  
-  CustomPVScene(const ParameterSet&);
-  
-  virtual std::string pythonCommands() const;
-  
-  static ParameterSet defaultParameters() { return Parameters::makeDefault(); }
-  virtual ParameterSet getParameters() const { return p_; }
-};
-
-
-
-
-class Cutplane
-: public PVScene
-{
-  
-public:
-#include "openfoamtools__Cutplane__Parameters.h"
-/*
-PARAMETERSET>>> Cutplane Parameters
-
-inherits insight::paraview::PVScene::Parameters
-
-dataset = string "" "name of the data set to cut"
-field = string "" "name of the field to display on the plane"
-
-p0 = vector (0 0 0) "center point of the cut plane"
-normal = vector (0 0 1) "normal vector of the cut plane"
-
-<<<PARAMETERSET
-*/
-protected:
-  Parameters p_;
-  
-public:
-  declareType("Cutplane");
-  
-  Cutplane(const ParameterSet&);
-  
-  virtual std::string pythonCommands() const;
-  
-  static ParameterSet defaultParameters() { return Parameters::makeDefault(); }
-  virtual ParameterSet getParameters() const { return p_; }
-};
-
-
-
-
-
-
-
-class IsoView
-: public PVScene
-{
-
-public:
-#include "openfoamtools__IsoView__Parameters.h"
-/*
-PARAMETERSET>>> IsoView Parameters
-
-inherits insight::paraview::PVScene::Parameters
-
-bbmin = vector (-1 -1 -1) "minimum point of bounding box"
-bbmax = vector (1 1 1) "maximum point of bounding box"
-
-filename = path "isoview.png" "Output filename. Different views will be stored at <file path>/<filename stem>_<view>.<file extension>."
-
-<<<PARAMETERSET
-*/
-protected:
-  Parameters p_;
-
-public:
-  declareType("IsoView");
-
-  IsoView(const ParameterSet&);
-
-  virtual std::string pythonCommands() const;
-  virtual std::vector<boost::filesystem::path> createdFiles() const;
-
-  static ParameterSet defaultParameters() { return Parameters::makeDefault(); }
-  virtual ParameterSet getParameters() const { return p_; }
-};
-
-
-
-
-class ParaviewVisualization
-: public Analysis
-{
-public:
-#include "openfoamtools__ParaviewVisualization__Parameters.h"
-/*
-PARAMETERSET>>> ParaviewVisualization Parameters
-
-scenes = array [
- dynamicclassconfig "paraview::PVScene" default "IsoView" "Scene configuration"
- ] *0 "Configuration of scenes"
-
-<<<PARAMETERSET
-*/
-
-  declareType("ParaviewVisualization");
-
-  ParaviewVisualization(const ParameterSet& ps, const boost::filesystem::path& exepath);
-
-  static ParameterSet defaultParameters();
-  static std::string category() { return "General Postprocessing"; }
-  
-  virtual ResultSetPtr operator()(ProgressDisplayer* displayer=NULL);
-};
-
-
-
-
-}
-
 
 
 class patchIntegrate
@@ -849,7 +679,8 @@ void extrude2DMesh
   std::string sourcePatchName2="",
   bool wedgeInsteadOfPrism=false,
   double distance=1.0,
-  const arma::mat& offsetTranslation=vec3(0,0,0.5)
+  const arma::mat& offsetTranslation=vec3(0,0,0.5),
+  const arma::mat& fixedDirection = arma::mat()
 );
 
 /**
@@ -875,16 +706,6 @@ void createBaffles
   const std::string& faceZoneName
 );
 
-
-/**
-  * return bounding box of model
-  * first col: min point
-  * second col: max point
-  */
-arma::mat STLBndBox
-(
-  const boost::filesystem::path& path
-);
 
 /**
  * return extrema in specified zone
@@ -1024,7 +845,72 @@ bool checkIfReconstructLatestTimestepNeeded
   const boost::filesystem::path& location
 );
 
-void exportEMesh(const std::vector<arma::mat>& pts, const boost::filesystem::path& filename);
+typedef std::vector<arma::mat> EMeshPtsList;
+typedef std::vector<EMeshPtsList> EMeshPtsListList;
+
+void exportEMesh(const EMeshPtsList& pts, const boost::filesystem::path& filename);
+void exportEMesh(const EMeshPtsListList& pts, const boost::filesystem::path& filename);
+
+
+class OpenFOAMCaseDirs
+{
+
+  boost::filesystem::path location_;
+  std::set<boost::filesystem::path> sysDirs_, postDirs_, procDirs_;
+  std::vector<boost::filesystem::path> timeDirs_;
+
+public:
+  enum TimeDirOpt { All, OnlyFirst, OnlyLast, OnlyFirstAndLast, ExceptFirst };
+
+public:
+  OpenFOAMCaseDirs
+  (
+    const OpenFOAMCase& cm,
+    const boost::filesystem::path& location
+  );
+
+  std::set<boost::filesystem::path> timeDirs( TimeDirOpt td = TimeDirOpt::All );
+
+  std::set<boost::filesystem::path> caseFilesAndDirs
+  (
+      TimeDirOpt td = TimeDirOpt::All,
+      bool cleanProc=true,
+      bool cleanTimes=true,
+      bool cleanPost=true,
+      bool cleanSys=true
+  );
+
+  void packCase(const boost::filesystem::path& archive_file, TimeDirOpt td = TimeDirOpt::All);
+
+  /**
+   * @brief cleanCase
+   * Removes all remainings of an OpenFOAM case (constant, system, processor*, postProcessing) from location.
+   * Return a list with all directories and files, which have been deleted.
+   */
+  void cleanCase
+  (
+      TimeDirOpt td = TimeDirOpt::All,
+      bool cleanProc=true,
+      bool cleanTimes=true,
+      bool cleanPost=true,
+      bool cleanSys=true
+  );
+};
+
+void VTKFieldToOpenFOAMField(const boost::filesystem::path& vtkfile, const std::string& fieldname, std::ostream& out);
+
+struct decompositionState
+{
+  bool hasProcessorDirectories;
+  bool nProcDirsMatchesDecomposeParDict;
+  bool decomposedLatestTimeIsConsistent;
+  enum Location { Reconstructed, Decomposed, Both, Undefined };
+  Location laterLatestTime;
+  Location newerFiles;
+
+  decompositionState(const boost::filesystem::path& casedir);
+};
+
 
 }
 
